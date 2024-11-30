@@ -9,7 +9,7 @@ use axum::{
     routing::get,
     Router,
 };
-use handler::{create_match_handler, get_match_by_id_handler, match_list_handler};
+use handler::{create_match_handler, get_match_by_id_handler, get_matches_handler};
 use sqlx::postgres;
 use tokio::net::TcpListener;
 use tower_http::{
@@ -60,7 +60,7 @@ async fn main() {
     let app = Router::new()
         .route(
             "/api/matches",
-            get(match_list_handler).post(create_match_handler),
+            get(get_matches_handler).post(create_match_handler),
         )
         .route("/api/matches/:match_id", get(get_match_by_id_handler))
         .layer(cors)

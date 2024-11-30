@@ -15,7 +15,7 @@ use crate::schema::GetMatchSchema;
 use crate::schema::Status;
 use crate::{model::MatchModel, schema::Pagination, AppState};
 
-pub async fn match_list_handler(
+pub async fn get_matches_handler(
     opts: Option<Query<Pagination>>,
     State(data): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, AppError> {

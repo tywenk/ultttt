@@ -2,6 +2,7 @@ use anyhow::{anyhow, Error, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::Type;
+use uuid::Uuid;
 
 use crate::model::MatchModel;
 
@@ -55,9 +56,9 @@ pub struct CreateMatchSchema {
 // For json response
 #[derive(Debug, Deserialize, Serialize)]
 pub struct GetMatchSchema {
-    pub id: String,
+    pub id: Uuid,
     pub state: Status,
-    pub snapshot: Option<Snapshot>,
+    pub snapshot: Snapshot,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -70,7 +71,7 @@ impl TryFrom<&MatchModel> for GetMatchSchema {
             None => return Err(anyhow::anyhow!("No snapshot found")),
         };
         Ok(Self {
-            id: m.id.to_string(),
+            id: m.id,
             state: m.state.clone(),
             snapshot,
             created_at: m.created_at,
