@@ -1,5 +1,6 @@
-use anyhow::{anyhow, Ok};
-use sqlx::{Pool, Postgres};
+use anyhow::{anyhow, Ok, Result};
+use sqlx::{query_as, Pool, Postgres};
+use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
@@ -39,17 +40,24 @@ pub async fn crud_get_match(db: &Pool<Postgres>, id: Uuid) -> Result<MatchModel,
     Ok(match_model)
 }
 
-pub async fn crud_create_match(db: &Pool<Postgres>) -> Result<MatchModel, anyhow::Error> {
+pub async fn crud_create_match(db: &Pool<Postgres>) -> Result<MatchModel> {
     let state = Status::Pending;
-    let board = Board::new();
-    let m: MatchModel =
-        sqlx::query_as(r#"INSERT INTO matches (id, state, board) VALUES ($1, $2, $3) RETURNING *"#)
-            .bind(uuid::Uuid::new_v4())
-            .bind(state)
-            .bind(board)
-            .fetch_one(db)
-            .await
-            .map_err(|e| anyhow!("Unable to query model from db: {}", e))?;
+    let board_json = serde_json::to_value(&Board::new())?;
+    let id = Uuid::new_v4();
+
+    let m: MatchModel = query_as(
+        r#"
+        INSERT INTO matches (id, state, board) 
+        VALUES ($1, $2, $3)
+        RETURNING *
+        "#,
+    )
+    .bind(id)
+    .bind(state)
+    .bind(board_json)
+    .fetch_one(db)
+    .await
+    .map_err(|e| anyhow!("Unable to query model from db: {}", e))?;
 
     Ok(m)
 }

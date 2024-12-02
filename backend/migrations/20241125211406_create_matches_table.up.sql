@@ -3,7 +3,7 @@ CREATE TYPE status AS ENUM ('x', 'o', 'tied', 'pending');
 CREATE TABLE IF NOT EXISTS matches (
     state status NOT NULL DEFAULT 'pending',
     id UUID PRIMARY KEY NOT NULL,
-    board JSONB,
+    board JSONB NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );

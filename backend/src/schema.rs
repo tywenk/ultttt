@@ -330,7 +330,6 @@ pub struct CreateMatchSchema {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct GetMatchSchema {
     pub id: Uuid,
-    pub state: Status,
     pub board: Board,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -339,15 +338,9 @@ pub struct GetMatchSchema {
 impl TryFrom<&MatchModel> for GetMatchSchema {
     type Error = Error;
     fn try_from(m: &MatchModel) -> Result<Self, Self::Error> {
-        let board = match &m.board {
-            Some(s) => serde_json::from_value(s.0.clone())?,
-            None => return Err(anyhow::anyhow!("No board found")),
-        };
-
         Ok(Self {
             id: m.id,
-            state: m.state.clone(),
-            board,
+            board: serde_json::from_value::<Board>(m.board.0.clone())?,
             created_at: m.created_at,
             updated_at: m.updated_at,
         })

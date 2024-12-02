@@ -11,7 +11,7 @@ use crate::schema::Status;
 pub struct MatchModel {
     pub id: Uuid,
     pub state: Status,
-    pub board: Option<Json<Value>>,
+    pub board: Json<Value>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
