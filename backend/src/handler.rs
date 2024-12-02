@@ -90,6 +90,6 @@ pub async fn update_snapshot_handler(
     Query(params): Query<Coords>,
     State(data): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, AppError> {
-    data.snapshot.increment(params.x, params.y);
+    data.snapshot.increment(params.section, params.cell);
     Ok(StatusCode::OK)
 }

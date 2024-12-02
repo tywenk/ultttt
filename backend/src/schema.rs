@@ -249,8 +249,8 @@ pub struct Pagination {
 
 #[derive(Deserialize, Debug)]
 pub struct Coords {
-    pub x: usize,
-    pub y: usize,
+    pub section: usize,
+    pub cell: usize,
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Type)]
