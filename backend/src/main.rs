@@ -7,12 +7,12 @@ mod schema;
 
 use axum::{
     http::{header::CONTENT_TYPE, Method},
-    routing::get,
+    routing::{any, get},
     Router,
 };
 use handler::{
     commit_match_from_snapshot_handler, create_match_handler, get_match_by_id_handler,
-    get_matches_handler, get_snapshot_handler, update_snapshot_handler,
+    get_matches_handler, get_snapshot_handler, handle_websocket, update_snapshot_handler,
 };
 use schema::Snapshot;
 use sqlx::postgres;
@@ -65,6 +65,7 @@ async fn main() {
 
     // build our application with some routes
     let app = Router::new()
+        .route("/ws", any(handle_websocket))
         .route(
             "/api/matches",
             get(get_matches_handler).post(create_match_handler),

@@ -2,13 +2,18 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::Result;
+use axum::extract::ws::Message;
+use axum::extract::ws::WebSocket;
 use axum::extract::Path;
+use axum::extract::WebSocketUpgrade;
 use axum::http::StatusCode;
 use axum::Json;
 use axum::{
     extract::{Query, State},
     response::IntoResponse,
 };
+use serde::Deserialize;
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::crud::crud_create_match;
@@ -92,4 +97,59 @@ pub async fn update_snapshot_handler(
 ) -> Result<impl IntoResponse, AppError> {
     data.snapshot.increment(params.section, params.cell);
     Ok(StatusCode::OK)
+}
+
+#[derive(Deserialize)]
+struct IncrementRequest {
+    section: usize,
+    cell: usize,
+}
+
+#[derive(Serialize)]
+struct SnapshotResponse {
+    snap: [[usize; 9]; 9],
+}
+
+pub async fn handle_websocket(
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    ws.on_upgrade(|socket| handle_socket_connection(socket, state))
+}
+
+async fn handle_socket_connection(mut socket: WebSocket, state: Arc<AppState>) {
+    // Send initial snapshot state
+    let initial_snapshot = SnapshotResponse {
+        snap: state.snapshot.load(),
+    };
+
+    if let Ok(initial_message) = serde_json::to_string(&initial_snapshot) {
+        let _ = socket.send(Message::Text(initial_message)).await;
+    }
+
+    while let Some(Ok(message)) = socket.recv().await {
+        match message {
+            Message::Text(text) => {
+                // Try to parse the increment request
+                if let Ok(request) = serde_json::from_str::<IncrementRequest>(&text) {
+                    // Validate indices
+                    if request.section < 9 && request.cell < 9 {
+                        // Increment the value
+                        state.snapshot.increment(request.section, request.cell);
+
+                        // Send back the updated snapshot
+                        let response = SnapshotResponse {
+                            snap: state.snapshot.load(),
+                        };
+
+                        if let Ok(response_text) = serde_json::to_string(&response) {
+                            let _ = socket.send(Message::Text(response_text)).await;
+                        }
+                    }
+                }
+            }
+            Message::Close(_) => break,
+            _ => {} // Ignore other message types
+        }
+    }
 }
