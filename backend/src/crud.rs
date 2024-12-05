@@ -1,6 +1,5 @@
 use anyhow::{anyhow, Ok, Result};
 use sqlx::{query_as, Pool, Postgres};
-use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
