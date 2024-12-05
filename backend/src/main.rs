@@ -14,9 +14,9 @@ use handler::{
     commit_match_from_snapshot_handler, create_match_handler, get_match_by_id_handler,
     get_matches_handler, get_snapshot_handler, handle_websocket, update_snapshot_handler,
 };
-use schema::Snapshot;
+use schema::{Snapshot, SnapshotResponse};
 use sqlx::postgres;
-use tokio::net::TcpListener;
+use tokio::{net::TcpListener, sync::broadcast};
 use tower_http::{
     cors::{Any, CorsLayer},
     trace::{DefaultOnResponse, TraceLayer},
@@ -24,11 +24,16 @@ use tower_http::{
 use tracing::Level;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{atomic::AtomicUsize, Arc},
+    time::Duration,
+};
 
 pub struct AppState {
     db: postgres::PgPool,
     snapshot: Snapshot,
+    tx: broadcast::Sender<SnapshotResponse>,
+    connection_count: AtomicUsize,
 }
 
 #[tokio::main]
@@ -63,6 +68,8 @@ async fn main() {
     // Run migrations
     sqlx::migrate!("./migrations").run(&pool).await.unwrap();
 
+    let (tx, _rx) = broadcast::channel(100);
+
     // build our application with some routes
     let app = Router::new()
         .route("/ws", any(handle_websocket))
@@ -83,6 +90,8 @@ async fn main() {
         .with_state(Arc::new(AppState {
             db: pool.clone(),
             snapshot: Snapshot::new(),
+            tx: tx.clone(),
+            connection_count: AtomicUsize::new(0),
         }));
 
     // run it with hyper

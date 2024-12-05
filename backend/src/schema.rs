@@ -3,7 +3,7 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use anyhow::{anyhow, Error, Result};
+use anyhow::{bail, Error, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::Type;
@@ -21,6 +21,14 @@ const WINNING_SETS: [[usize; 3]; 8] = [
     [0, 4, 8],
     [2, 4, 6],
 ];
+const DEFAULT_PLAYER: Player = Player::X;
+
+// #[derive(Clone, Serialize, Deserialize, Debug)]
+// #[serde(rename_all = "lowercase")]
+// pub enum SnapshotStatus {
+//     New,
+//     Pending,
+// }
 
 pub struct Snapshot {
     pub snap: [[AtomicUsize; 9]; 9],
@@ -180,27 +188,27 @@ impl Board {
                 is_interactive: true,
             }),
             status: Status::Pending,
-            current_player: Player::X,
+            current_player: Player::default(),
         }
     }
 
     fn validate_move(&self, coord: (usize, usize), player: Player) -> Result<()> {
         if player != self.current_player {
-            return Err(anyhow!("Invalid player"));
+            bail!("Invalid player");
         }
 
         if !self.is_interactive() {
-            return Err(anyhow!("Board is not interactive"));
+            bail!("Board is not interactive");
         }
 
         let sec = &self.data[coord.0];
         if !sec.is_interactive() {
-            return Err(anyhow!("Section is not interactive"));
+            bail!("Section is not interactive");
         }
 
         let cell = &sec.data[coord.1];
         if !cell.is_interactive() {
-            return Err(anyhow!("Cell is not interactive"));
+            bail!("Cell is not interactive");
         }
 
         Ok(())
@@ -278,7 +286,7 @@ impl TryFrom<&str> for Status {
             "o" => Ok(Status::O),
             "tied" => Ok(Status::Tied),
             "pending" => Ok(Status::Pending),
-            _ => Err(anyhow!("Invalid status: {}", s)),
+            _ => bail!("Invalid status: {}", s),
         }
     }
 }
@@ -308,6 +316,12 @@ impl TryFrom<Status> for Player {
             Status::O => Ok(Player::O),
             _ => Err("Variant not available in Player"),
         }
+    }
+}
+
+impl Default for Player {
+    fn default() -> Self {
+        DEFAULT_PLAYER
     }
 }
 
@@ -345,4 +359,15 @@ impl TryFrom<&MatchModel> for GetMatchSchema {
             updated_at: m.updated_at,
         })
     }
+}
+
+#[derive(Deserialize)]
+pub struct IncrementRequest {
+    pub section: usize,
+    pub cell: usize,
+}
+
+#[derive(Clone, Serialize)]
+pub struct SnapshotResponse {
+    pub snap: [[usize; 9]; 9],
 }

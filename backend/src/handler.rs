@@ -1,3 +1,4 @@
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use anyhow::anyhow;
@@ -12,8 +13,10 @@ use axum::{
     extract::{Query, State},
     response::IntoResponse,
 };
-use serde::Deserialize;
-use serde::Serialize;
+use futures::SinkExt;
+use futures::StreamExt;
+use tokio::time::Duration;
+use tokio::time::Instant;
 use uuid::Uuid;
 
 use crate::crud::crud_create_match;
@@ -23,6 +26,8 @@ use crate::crud::crud_update_match;
 use crate::error::AppError;
 use crate::schema::Coords;
 use crate::schema::GetMatchSchema;
+use crate::schema::IncrementRequest;
+use crate::schema::SnapshotResponse;
 use crate::{schema::Pagination, AppState};
 
 pub async fn get_matches_handler(
@@ -99,17 +104,6 @@ pub async fn update_snapshot_handler(
     Ok(StatusCode::OK)
 }
 
-#[derive(Deserialize)]
-struct IncrementRequest {
-    section: usize,
-    cell: usize,
-}
-
-#[derive(Serialize)]
-struct SnapshotResponse {
-    snap: [[usize; 9]; 9],
-}
-
 pub async fn handle_websocket(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
@@ -118,6 +112,16 @@ pub async fn handle_websocket(
 }
 
 async fn handle_socket_connection(mut socket: WebSocket, state: Arc<AppState>) {
+    // Subscribe to broadcast channel
+    // This allows the connection to receive updates, which in this case are snapshots
+    let mut rx = state.tx.subscribe();
+
+    let current_connections = state.connection_count.fetch_add(1, Ordering::SeqCst);
+    tracing::info!(
+        "New connection. Total connections: {}",
+        current_connections + 1
+    );
+
     // Send initial snapshot state
     let initial_snapshot = SnapshotResponse {
         snap: state.snapshot.load(),
@@ -127,29 +131,69 @@ async fn handle_socket_connection(mut socket: WebSocket, state: Arc<AppState>) {
         let _ = socket.send(Message::Text(initial_message)).await;
     }
 
-    while let Some(Ok(message)) = socket.recv().await {
-        match message {
-            Message::Text(text) => {
-                // Try to parse the increment request
-                if let Ok(request) = serde_json::from_str::<IncrementRequest>(&text) {
-                    // Validate indices
-                    if request.section < 9 && request.cell < 9 {
-                        // Increment the value
-                        state.snapshot.increment(request.section, request.cell);
+    // Split the socket into sender and receiver
+    let (mut sender, mut receiver) = socket.split();
 
-                        // Send back the updated snapshot
-                        let response = SnapshotResponse {
-                            snap: state.snapshot.load(),
-                        };
+    // Spawn a task to handle broadcast messages
+    // Handles sending messages from this server to the client
+    let mut send_task = {
+        tokio::spawn(async move {
+            while let Ok(snap) = rx.recv().await {
+                if let Ok(msg) = serde_json::to_string(&snap) {
+                    if sender.send(Message::Text(msg)).await.is_err() {
+                        break;
+                    }
+                }
+            }
+        })
+    };
 
-                        if let Ok(response_text) = serde_json::to_string(&response) {
-                            let _ = socket.send(Message::Text(response_text)).await;
+    // Spawn a task to handle incoming messages
+    // Handles receiving messages sent from the client to this server
+    let mut receive_task = {
+        let state = state.clone();
+        tokio::spawn(async move {
+            let mut last_broadcast = Instant::now();
+            let mut needs_broadcast = false;
+
+            while let Some(Ok(message)) = receiver.next().await {
+                if let Message::Text(text) = message {
+                    if let Ok(request) = serde_json::from_str::<IncrementRequest>(&text) {
+                        if request.section < 9 && request.cell < 9 {
+                            state.snapshot.increment(request.section, request.cell);
+                            needs_broadcast = true;
+
+                            // If enough time has passed since last broadcast then
+                            // we send the most updated state. This is a primitive form
+                            // of rate limiting.
+                            if needs_broadcast
+                                && last_broadcast.elapsed() > Duration::from_millis(100)
+                            {
+                                let new_snap = state.snapshot.load();
+                                let _ = state.tx.send(SnapshotResponse { snap: new_snap });
+                                needs_broadcast = false;
+                                last_broadcast = Instant::now();
+                            }
                         }
                     }
                 }
             }
-            Message::Close(_) => break,
-            _ => {} // Ignore other message types
-        }
-    }
+
+            // Don't forget final broadcast if needed
+            if needs_broadcast {
+                let new_snap = state.snapshot.load();
+                let _ = state.tx.send(SnapshotResponse { snap: new_snap });
+            }
+        })
+    };
+
+    // Wait for either task to finish and then cleanup
+    tokio::select! {
+        _ = &mut send_task => receive_task.abort(),
+        _ = &mut receive_task => send_task.abort(),
+    };
+
+    // Log connection close and decrement connection count
+    let remaining = state.connection_count.fetch_sub(1, Ordering::SeqCst) - 1;
+    tracing::info!("Connection closed. Remaining connections: {}", remaining);
 }
