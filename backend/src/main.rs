@@ -12,9 +12,9 @@ use axum::{
 use crossbeam::atomic::AtomicCell;
 use crud::{crud_create_match, crud_get_latest_match};
 use handler::{
-    commit_match_from_snapshot_handler, create_match_handler, get_match_by_id_handler,
-    get_matches_handler, get_snapshot_handler, handle_websocket, run_match_updates,
-    update_snapshot_handler,
+    commit_match_from_snapshot_handler, create_match_handler, get_latest_match_handler,
+    get_match_by_id_handler, get_matches_handler, get_snapshot_handler, handle_websocket,
+    run_match_updates, update_snapshot_handler,
 };
 use schema::{MatchSchema, Snapshot, SnapshotResponse, Teams};
 use sqlx::postgres;
@@ -107,6 +107,7 @@ async fn main() {
     // Build our application with some routes
     let app = Router::new()
         .route("/ws", any(handle_websocket))
+        .route("/api/matches/latest", get(get_latest_match_handler))
         .route(
             "/api/matches",
             get(get_matches_handler).post(create_match_handler),

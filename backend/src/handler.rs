@@ -20,6 +20,7 @@ use tokio::time::Instant;
 use uuid::Uuid;
 
 use crate::crud::crud_create_match;
+use crate::crud::crud_get_latest_match;
 use crate::crud::crud_get_match;
 use crate::crud::crud_get_matches;
 use crate::crud::crud_update_match;
@@ -46,7 +47,7 @@ pub async fn get_matches_handler(
         Ok(res) => {
             let json_response = serde_json::json!({
                 "count": res.len(),
-                "notes": res
+                "data": res
             });
 
             Ok(Json(json_response))
@@ -66,6 +67,13 @@ pub async fn create_match_handler(
     State(data): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, AppError> {
     let m = crud_create_match(&data.db).await?;
+    Ok(Json(MatchSchema::try_from(&m)?))
+}
+
+pub async fn get_latest_match_handler(
+    State(data): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, AppError> {
+    let m = crud_get_latest_match(&data.db).await?;
     Ok(Json(MatchSchema::try_from(&m)?))
 }
 
