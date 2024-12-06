@@ -2,7 +2,6 @@ mod crud;
 mod error;
 mod handler;
 mod model;
-mod route;
 mod schema;
 
 use axum::{
