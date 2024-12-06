@@ -21,7 +21,7 @@ const WINNING_SETS: [[usize; 3]; 8] = [
     [0, 4, 8],
     [2, 4, 6],
 ];
-const DEFAULT_PLAYER: Player = Player::X;
+const DEFAULT_TEAM: Team = Team::X;
 
 // #[derive(Clone, Serialize, Deserialize, Debug)]
 // #[serde(rename_all = "lowercase")]
@@ -52,7 +52,7 @@ impl Snapshot {
         let mut snap: [[usize; 9]; 9] = Default::default();
         for (i, row) in self.snap.iter().enumerate() {
             for (j, cell) in row.iter().enumerate() {
-                snap[i][j] = cell.load(Ordering::Relaxed);
+                snap[i][j] = cell.load(Ordering::Acquire);
             }
         }
         snap
@@ -61,13 +61,13 @@ impl Snapshot {
     pub fn reset(&self) {
         for row in self.snap.iter() {
             for cell in row.iter() {
-                cell.store(0, Ordering::Relaxed);
+                cell.store(0, Ordering::SeqCst);
             }
         }
     }
 
     pub fn increment(&self, row: usize, col: usize) -> usize {
-        self.snap[row][col].fetch_add(1, Ordering::Relaxed)
+        self.snap[row][col].fetch_add(1, Ordering::AcqRel)
     }
 
     pub fn find_max_indices(&self) -> Option<(usize, usize)> {
@@ -92,6 +92,12 @@ impl Snapshot {
 
         Some(max_indices)
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.load()
+            .iter()
+            .all(|row| row.iter().all(|&cell| cell == 0))
+    }
 }
 
 pub trait ValidateInteractive {
@@ -99,10 +105,10 @@ pub trait ValidateInteractive {
 }
 
 pub trait GameStatusEvaluator {
-    fn calculate_status(&self, player: Player) -> Status;
+    fn calculate_status(&self, team: Team) -> Status;
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, Type)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, Type)]
 pub struct Cell {
     pub status: Status,
 }
@@ -113,7 +119,7 @@ impl ValidateInteractive for Cell {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, Type)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, Type)]
 pub struct Section {
     pub data: [Cell; 9],
     pub status: Status,
@@ -127,14 +133,14 @@ impl ValidateInteractive for Section {
 }
 
 impl GameStatusEvaluator for Section {
-    fn calculate_status(&self, player: Player) -> Status {
-        let is_player_won = WINNING_SETS.iter().any(|set| {
+    fn calculate_status(&self, team: Team) -> Status {
+        let is_team_won = WINNING_SETS.iter().any(|set| {
             set.iter()
-                .all(|&index| self.data[index].status == player.into())
+                .all(|&index| self.data[index].status == team.into())
         });
 
-        if is_player_won {
-            return player.into();
+        if is_team_won {
+            return team.into();
         }
 
         if self.data.iter().all(|cell| cell.status != Status::Pending) {
@@ -145,11 +151,11 @@ impl GameStatusEvaluator for Section {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, Type)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, Type)]
 pub struct Board {
     pub data: [Section; 9],
     pub status: Status,
-    pub current_player: Player,
+    pub current_team: Team,
 }
 
 impl ValidateInteractive for Board {
@@ -159,14 +165,14 @@ impl ValidateInteractive for Board {
 }
 
 impl GameStatusEvaluator for Board {
-    fn calculate_status(&self, player: Player) -> Status {
-        let is_player_won = WINNING_SETS.iter().any(|set| {
+    fn calculate_status(&self, team: Team) -> Status {
+        let is_team_won = WINNING_SETS.iter().any(|set| {
             set.iter()
-                .all(|&index| self.data[index].status == player.into())
+                .all(|&index| self.data[index].status == team.into())
         });
 
-        if is_player_won {
-            return player.into();
+        if is_team_won {
+            return team.into();
         }
 
         if self.data.iter().all(|sec| sec.status != Status::Pending) {
@@ -188,13 +194,13 @@ impl Board {
                 is_interactive: true,
             }),
             status: Status::Pending,
-            current_player: Player::default(),
+            current_team: Team::default(),
         }
     }
 
-    fn validate_move(&self, coord: (usize, usize), player: Player) -> Result<()> {
-        if player != self.current_player {
-            bail!("Invalid player");
+    fn validate_move(&self, coord: (usize, usize), team: Team) -> Result<()> {
+        if team != self.current_team {
+            bail!("Not this team's turn");
         }
 
         if !self.is_interactive() {
@@ -215,8 +221,8 @@ impl Board {
     }
 
     pub fn get_updated(&self, coord: (usize, usize)) -> Result<Self> {
-        let player = self.current_player;
-        self.validate_move(coord, player)?;
+        let team = self.current_team;
+        self.validate_move(coord, team)?;
 
         let sec_index = coord.0;
         let cell_index = coord.1;
@@ -225,8 +231,8 @@ impl Board {
         let sec = &mut new_board.data[sec_index];
         let cell = &mut sec.data[cell_index];
 
-        cell.status = player.into();
-        sec.status = sec.calculate_status(player);
+        cell.status = team.into();
+        sec.status = sec.calculate_status(team);
 
         // Normalize interactivity
         for sec in new_board.data.iter_mut() {
@@ -242,8 +248,8 @@ impl Board {
             }
         }
 
-        new_board.status = new_board.calculate_status(player);
-        new_board.current_player = player.toggle();
+        new_board.status = new_board.calculate_status(team);
+        new_board.current_team = team.toggle();
 
         Ok(new_board)
     }
@@ -291,11 +297,11 @@ impl TryFrom<&str> for Status {
     }
 }
 
-impl From<Player> for Status {
-    fn from(value: Player) -> Self {
+impl From<Team> for Status {
+    fn from(value: Team) -> Self {
         match value {
-            Player::X => Status::X,
-            Player::O => Status::O,
+            Team::X => Status::X,
+            Team::O => Status::O,
         }
     }
 }
@@ -303,33 +309,33 @@ impl From<Player> for Status {
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Type)]
 #[serde(rename_all = "lowercase")]
 #[sqlx(rename_all = "lowercase")]
-pub enum Player {
+pub enum Team {
     X,
     O,
 }
 
-impl TryFrom<Status> for Player {
+impl TryFrom<Status> for Team {
     type Error = &'static str;
     fn try_from(value: Status) -> Result<Self, Self::Error> {
         match value {
-            Status::X => Ok(Player::X),
-            Status::O => Ok(Player::O),
-            _ => Err("Variant not available in Player"),
+            Status::X => Ok(Team::X),
+            Status::O => Ok(Team::O),
+            _ => Err("Variant not available in Team"),
         }
     }
 }
 
-impl Default for Player {
+impl Default for Team {
     fn default() -> Self {
-        DEFAULT_PLAYER
+        DEFAULT_TEAM
     }
 }
 
-impl Player {
-    pub fn toggle(&self) -> Player {
+impl Team {
+    pub fn toggle(&self) -> Team {
         match self {
-            Player::X => Player::O,
-            Player::O => Player::X,
+            Team::X => Team::O,
+            Team::O => Team::X,
         }
     }
 }
@@ -341,15 +347,15 @@ pub struct CreateMatchSchema {
 }
 
 // For json response
-#[derive(Debug, Deserialize, Serialize)]
-pub struct GetMatchSchema {
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+pub struct MatchSchema {
     pub id: Uuid,
     pub board: Board,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
-impl TryFrom<&MatchModel> for GetMatchSchema {
+impl TryFrom<&MatchModel> for MatchSchema {
     type Error = Error;
     fn try_from(m: &MatchModel) -> Result<Self, Self::Error> {
         Ok(Self {
@@ -369,5 +375,76 @@ pub struct IncrementRequest {
 
 #[derive(Clone, Serialize)]
 pub struct SnapshotResponse {
+    // Team is not none only on new connection. This tells
+    // the client what team they are on
+    pub your_team: Option<Team>,
     pub snap: [[usize; 9]; 9],
+    pub current_team: Team,
+}
+
+use crossbeam::atomic::AtomicCell;
+use dashmap::DashSet;
+
+#[derive(Debug)]
+pub struct TeamConnection {
+    pub team: Team,
+    pub id: Uuid, // Unique identifier for each connection
+}
+
+#[derive(Debug)]
+pub struct Teams {
+    pub team_x: DashSet<Uuid>,
+    pub team_o: DashSet<Uuid>,
+    pub current_team: AtomicCell<Team>,
+}
+
+impl Teams {
+    pub fn new() -> Self {
+        Self {
+            team_x: DashSet::new(),
+            team_o: DashSet::new(),
+            current_team: AtomicCell::new(Team::X),
+        }
+    }
+
+    // Assign a new client to a team
+    pub fn assign_team(&self) -> TeamConnection {
+        let id = Uuid::new_v4();
+        let x_count = self.team_x.len();
+        let o_count = self.team_o.len();
+
+        // Balance the teams on new connection
+        if x_count <= o_count {
+            // Default team is X
+            self.team_x.insert(id);
+            TeamConnection {
+                team: Team::default(),
+                id,
+            }
+        } else {
+            self.team_o.insert(id);
+            TeamConnection {
+                team: Team::default().toggle(),
+                id,
+            }
+        }
+    }
+
+    pub fn remove_connection(&self, connection: &TeamConnection) {
+        match connection.team {
+            Team::X => self.team_x.remove(&connection.id),
+            Team::O => self.team_o.remove(&connection.id),
+        };
+    }
+
+    pub fn toggle(&self) {
+        let current = self.current_team.load();
+        self.current_team.store(current.toggle());
+    }
+
+    pub fn team_lens(&self) -> (usize, usize) {
+        let x_count = self.team_x.len();
+        let o_count = self.team_o.len();
+        (x_count, o_count)
+    }
 }

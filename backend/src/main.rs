@@ -10,11 +10,14 @@ use axum::{
     routing::{any, get},
     Router,
 };
+use crossbeam::atomic::AtomicCell;
+use crud::{crud_create_match, crud_get_latest_match};
 use handler::{
     commit_match_from_snapshot_handler, create_match_handler, get_match_by_id_handler,
-    get_matches_handler, get_snapshot_handler, handle_websocket, update_snapshot_handler,
+    get_matches_handler, get_snapshot_handler, handle_websocket, run_match_updates,
+    update_snapshot_handler,
 };
-use schema::{Snapshot, SnapshotResponse};
+use schema::{MatchSchema, Snapshot, SnapshotResponse, Teams};
 use sqlx::postgres;
 use tokio::{net::TcpListener, sync::broadcast};
 use tower_http::{
@@ -24,16 +27,15 @@ use tower_http::{
 use tracing::Level;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use std::{
-    sync::{atomic::AtomicUsize, Arc},
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 pub struct AppState {
     db: postgres::PgPool,
     snapshot: Snapshot,
-    tx: broadcast::Sender<SnapshotResponse>,
-    connection_count: AtomicUsize,
+    match_schema: AtomicCell<MatchSchema>,
+    snap_tx: broadcast::Sender<SnapshotResponse>,
+    timer_tx: broadcast::Sender<MatchSchema>,
+    teams: Teams,
 }
 
 #[tokio::main]
@@ -68,9 +70,42 @@ async fn main() {
     // Run migrations
     sqlx::migrate!("./migrations").run(&pool).await.unwrap();
 
-    let (tx, _rx) = broadcast::channel(100);
+    let (snap_tx, _snap_rx) = broadcast::channel(100);
+    let (timer_tx, _timer_rx) = broadcast::channel(4096);
 
-    // build our application with some routes
+    // Get the latest match state or create a new one
+    let match_schema = match crud_get_latest_match(&pool).await {
+        Ok(model) => MatchSchema::try_from(&model)
+            .map_err(|e| anyhow::anyhow!("Failed to convert model to schema: {}", e))
+            .unwrap(),
+        Err(_) => {
+            let new_match = crud_create_match(&pool)
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to create new match: {}", e))
+                .unwrap();
+
+            MatchSchema::try_from(&new_match)
+                .map_err(|e| anyhow::anyhow!("Failed to convert new match to schema: {}", e))
+                .unwrap()
+        }
+    };
+
+    let state = Arc::new(AppState {
+        db: pool.clone(),
+        snapshot: Snapshot::new(),
+        match_schema: AtomicCell::new(match_schema),
+        snap_tx: snap_tx.clone(),
+        timer_tx: timer_tx.clone(),
+        teams: Teams::new(),
+    });
+
+    // Spawn the global 10 second timer.
+    let update_state = state.clone();
+    tokio::spawn(async move {
+        run_match_updates(update_state).await;
+    });
+
+    // Build our application with some routes
     let app = Router::new()
         .route("/ws", any(handle_websocket))
         .route(
@@ -87,12 +122,7 @@ async fn main() {
         )
         .layer(cors)
         .layer(trace_layer)
-        .with_state(Arc::new(AppState {
-            db: pool.clone(),
-            snapshot: Snapshot::new(),
-            tx: tx.clone(),
-            connection_count: AtomicUsize::new(0),
-        }));
+        .with_state(state);
 
     // run it with hyper
     let listener = TcpListener::bind("127.0.0.1:8000").await.unwrap();

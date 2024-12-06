@@ -23,6 +23,22 @@ pub async fn crud_get_matches(
     Ok(matches)
 }
 
+pub async fn crud_get_latest_match(db: &Pool<Postgres>) -> Result<MatchModel, anyhow::Error> {
+    let match_model: MatchModel = sqlx::query_as(
+        r#"
+        SELECT id, state, board, created_at, updated_at
+        FROM matches
+        ORDER BY created_at DESC
+        LIMIT 1
+        "#,
+    )
+    .fetch_one(db)
+    .await
+    .map_err(|e| anyhow!("Unable to query model from db: {}", e))?;
+
+    Ok(match_model)
+}
+
 pub async fn crud_get_match(db: &Pool<Postgres>, id: Uuid) -> Result<MatchModel, anyhow::Error> {
     let match_model: MatchModel = sqlx::query_as(
         r#"
@@ -67,11 +83,12 @@ pub async fn crud_update_match(
     state: Status,
     board: Board,
 ) -> Result<MatchModel, anyhow::Error> {
+    let board_json = serde_json::to_value(&board)?;
     let m: MatchModel =
         sqlx::query_as(r#"UPDATE matches SET (state, board) = ($2, $3) WHERE id = $1 RETURNING *"#)
             .bind(id)
             .bind(state)
-            .bind(board)
+            .bind(board_json)
             .fetch_one(db)
             .await
             .map_err(|e| anyhow!("Unable to query model from db: {}", e))?;
