@@ -266,7 +266,7 @@ async fn send_match_updates(state: Arc<AppState>) -> Result<()> {
         // Send to all connected clients
         if state.timer_tx.send(updated_match_schema).is_ok() {
             // Reset snapshot state
-            state.teams.toggle();
+            state.teams.set(updated_match_schema.board.current_team);
             state.snapshot.reset();
         } else {
             bail!("Unable to send match updates to clients");

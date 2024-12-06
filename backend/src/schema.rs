@@ -437,9 +437,8 @@ impl Teams {
         };
     }
 
-    pub fn toggle(&self) {
-        let current = self.current_team.load();
-        self.current_team.store(current.toggle());
+    pub fn set(&self, team: Team) {
+        self.current_team.store(team);
     }
 
     pub fn team_lens(&self) -> (usize, usize) {
