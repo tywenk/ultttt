@@ -166,7 +166,7 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
     let initial_snap = state.snapshot.load();
     if let Ok(initial_response) = serde_json::to_string(&SnapshotResponse {
         snap: initial_snap,
-        current_team: state.teams.current_team.load(),
+        current_team: state.match_schema.load().board.current_team,
         your_team: Some(team_connection.team),
     }) {
         if sender.send(Message::Text(initial_response)).await.is_err() {
@@ -238,33 +238,47 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
 
             while let Some(Ok(message)) = receiver.next().await {
                 if let Message::Text(text) = message {
+                    tracing::info!(
+                        "Incrementing for team: {:?} {:?}",
+                        team_connection.team,
+                        &text
+                    );
                     // If the message is a valid increment request then we increment and broadcast updates to clients
                     // We also check that the current connection is on the team that is allowed to make the move
-
                     if let Ok(request) = serde_json::from_str::<IncrementRequest>(&text) {
-                        if let Ok(_) = state.snapshot.validate_move(
+                        match state.snapshot.validate_move(
                             state.clone(),
                             request.section,
                             request.cell,
                             team_connection.team,
                         ) {
-                            state.snapshot.increment(request.section, request.cell);
-                            needs_broadcast = true;
+                            Ok(_) => {
+                                tracing::info!(
+                                    "Incrementing cell: {:?} for team: {:?}",
+                                    request,
+                                    team_connection.team
+                                );
+                                state.snapshot.increment(request.section, request.cell);
+                                needs_broadcast = true;
 
-                            // If enough time has passed since last broadcast then
-                            // we send the most updated state. This is a primitive form
-                            // of rate limiting and stops a client from spamming everyone.
-                            if needs_broadcast
-                                && last_broadcast.elapsed() > Duration::from_millis(100)
-                            {
-                                let new_snap = state.snapshot.load();
-                                let _ = state.snap_tx.send(SnapshotResponse {
-                                    snap: new_snap,
-                                    current_team: state.teams.current_team.load(),
-                                    your_team: None,
-                                });
-                                needs_broadcast = false;
-                                last_broadcast = Instant::now();
+                                // If enough time has passed since last broadcast then
+                                // we send the most updated state. This is a primitive form
+                                // of rate limiting and stops a client from spamming everyone.
+                                if needs_broadcast
+                                    && last_broadcast.elapsed() > Duration::from_millis(100)
+                                {
+                                    let new_snap = state.snapshot.load();
+                                    let _ = state.snap_tx.send(SnapshotResponse {
+                                        snap: new_snap,
+                                        current_team: state.match_schema.load().board.current_team,
+                                        your_team: None,
+                                    });
+                                    needs_broadcast = false;
+                                    last_broadcast = Instant::now();
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!("Invalid move: {:?}", e);
                             }
                         }
                     }
@@ -276,7 +290,7 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
                 let new_snap = state.snapshot.load();
                 let _ = state.snap_tx.send(SnapshotResponse {
                     snap: new_snap,
-                    current_team: state.teams.current_team.load(),
+                    current_team: state.match_schema.load().board.current_team,
                     your_team: None,
                 });
             }
@@ -333,14 +347,14 @@ async fn send_match_updates(state: Arc<AppState>) -> Result<()> {
             .map_err(|_| anyhow::anyhow!("Failed to send match updates to clients"))?;
 
         // Reset snapshot state
-        state.teams.set(updated_match_schema.board.current_team);
         state.snapshot.reset();
+        state.match_schema.store(updated_match_schema);
 
         state
             .snap_tx
             .send(SnapshotResponse {
                 snap: state.snapshot.load(),
-                current_team: state.teams.current_team.load(),
+                current_team: state.match_schema.load().board.current_team,
                 your_team: None,
             })
             .map_err(|_| anyhow::anyhow!("Failed to send snapshot response"))?;

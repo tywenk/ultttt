@@ -109,15 +109,19 @@ impl Snapshot {
         cell: usize,
         team: Team,
     ) -> Result<()> {
-        let curr_team = state.teams.current_team.load();
         let curr_match = state.match_schema.load();
 
         ensure!(section < 9 && cell < 9, "Invalid row or column index");
+
+        tracing::info!(
+            "Validating team: {:?}, Board teams: {:?}",
+            team,
+            curr_match.board.current_team
+        );
         ensure!(
             curr_match.board.current_team == team,
             "Invalid team according to match state"
         );
-        ensure!(curr_team == team, "Invalid team according to app state");
 
         let board_is_interactive = curr_match.board.is_interactive();
         ensure!(board_is_interactive, "Board is not interactive");
@@ -399,7 +403,7 @@ impl TryFrom<&MatchModel> for MatchSchema {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct IncrementRequest {
     pub section: usize,
     pub cell: usize,
@@ -420,7 +424,6 @@ pub struct TeamsResponse {
     pub o_team_size: usize,
 }
 
-use crossbeam::atomic::AtomicCell;
 use dashmap::DashSet;
 
 #[derive(Debug)]
@@ -433,7 +436,6 @@ pub struct TeamConnection {
 pub struct Teams {
     pub team_x: DashSet<Uuid>,
     pub team_o: DashSet<Uuid>,
-    pub current_team: AtomicCell<Team>,
 }
 
 impl Teams {
@@ -441,7 +443,6 @@ impl Teams {
         Self {
             team_x: DashSet::new(),
             team_o: DashSet::new(),
-            current_team: AtomicCell::new(Team::X),
         }
     }
 
@@ -473,10 +474,6 @@ impl Teams {
             Team::X => self.team_x.remove(&connection.id),
             Team::O => self.team_o.remove(&connection.id),
         };
-    }
-
-    pub fn set(&self, team: Team) {
-        self.current_team.store(team);
     }
 
     pub fn team_lens(&self) -> (usize, usize) {
