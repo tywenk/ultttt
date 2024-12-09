@@ -1,4 +1,5 @@
-use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::sync::Arc; // Add this import
 
 use anyhow::anyhow;
 use anyhow::bail;
@@ -138,6 +139,10 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
         team_x_len + team_o_len
     );
 
+    // Update the paused state on new connection
+    let enough_players = team_x_len > 0 && team_o_len > 0;
+    state.is_paused.store(!enough_players, Ordering::SeqCst);
+
     // Split the socket into sender and receiver
     let (mut sender, mut receiver) = socket.split();
 
@@ -148,6 +153,8 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
         snap: initial_snap,
         current_team: state.teams.current_team.load(),
         your_team: Some(team_connection.team),
+        x_team_size: team_x_len,
+        o_team_size: team_o_len,
     }) {
         if sender.send(Message::Text(initial_response)).await.is_err() {
             tracing::error!("Unable to send initial snapshot to client");
@@ -218,11 +225,14 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
                             if needs_broadcast
                                 && last_broadcast.elapsed() > Duration::from_millis(100)
                             {
+                                let (team_x_len, team_o_len) = state.teams.team_lens();
                                 let new_snap = state.snapshot.load();
                                 let _ = state.snap_tx.send(SnapshotResponse {
                                     snap: new_snap,
                                     current_team: state.teams.current_team.load(),
                                     your_team: None,
+                                    x_team_size: team_x_len,
+                                    o_team_size: team_o_len,
                                 });
                                 needs_broadcast = false;
                                 last_broadcast = Instant::now();
@@ -233,12 +243,15 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
             }
 
             // Don't forget final broadcast if needed
+            let (team_x_len, team_o_len) = state.teams.team_lens();
             if needs_broadcast {
                 let new_snap = state.snapshot.load();
                 let _ = state.snap_tx.send(SnapshotResponse {
                     snap: new_snap,
                     current_team: state.teams.current_team.load(),
                     your_team: None,
+                    x_team_size: team_x_len,
+                    o_team_size: team_o_len,
                 });
             }
         })
@@ -253,6 +266,10 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
     // Cleanup connection on disconnect
     state.teams.remove_connection(&team_connection);
     let (team_x_len, team_o_len) = state.teams.team_lens();
+
+    // Update pause state based on team sizes
+    let enough_players = team_x_len > 0 && team_o_len > 0;
+    state.is_paused.store(!enough_players, Ordering::SeqCst);
 
     // Log connection close and decrement connection count
     tracing::info!(
@@ -283,33 +300,39 @@ async fn send_match_updates(state: Arc<AppState>) -> Result<()> {
 
     Ok(())
 }
-
 pub async fn run_match_updates(state: Arc<AppState>) {
     tracing::info!("Starting run match updates");
 
-    let mut interval = tokio::time::interval(Duration::from_secs(10));
-
     loop {
-        tokio::select! {
-            _ = interval.tick() => {
-                if state.snapshot.is_empty() {
-                    tracing::warn!("Snapshot is empty, not starting match updates");
-                    continue;
-                }
-
-                let (team_x_len, team_o_len) = state.teams.team_lens();
-                if team_x_len == 0 || team_o_len == 0 {
-                    tracing::warn!("Not enough players to start match updates");
-                    continue;
-                }
-
-                tracing::info!("Conditions met, starting match updates");
-
-                if let Err(e) = send_match_updates(state.clone()).await {
-                    tracing::error!("Error sending match updates: {:?}", e);
-                    continue;
-                }
-            }
+        // Check conditions first
+        let (team_x_len, team_o_len) = state.teams.team_lens();
+        tracing::info!("Team sizes: X: {}, O: {}", team_x_len, team_o_len);
+        if team_x_len == 0 || team_o_len == 0 {
+            state.is_paused.store(true, Ordering::SeqCst);
+            tracing::warn!("Not enough players, game paused");
+            // Sleep for a shorter duration when waiting for players
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            continue;
         }
+
+        if state.is_paused.load(Ordering::SeqCst) {
+            tracing::info!("Game is paused.");
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            continue;
+        }
+
+        if state.snapshot.is_empty() {
+            tracing::warn!("Snapshot is empty, not starting match updates");
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            continue;
+        }
+
+        tracing::info!("Conditions met, starting match updates");
+
+        // Only sleep the full interval when actually running updates
+        if let Err(e) = send_match_updates(state.clone()).await {
+            tracing::error!("Error sending match updates: {:?}", e);
+        }
+        tokio::time::sleep(Duration::from_secs(10)).await;
     }
 }

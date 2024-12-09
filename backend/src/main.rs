@@ -26,7 +26,8 @@ use tower_http::{
 use tracing::Level;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use std::{sync::Arc, time::Duration};
+use std::sync::atomic::AtomicBool;
+use std::{sync::Arc, time::Duration}; // Add this import
 
 pub struct AppState {
     db: postgres::PgPool,
@@ -35,6 +36,7 @@ pub struct AppState {
     snap_tx: broadcast::Sender<SnapshotResponse>,
     timer_tx: broadcast::Sender<MatchSchema>,
     teams: Teams,
+    is_paused: AtomicBool, // Changed from AtomicCell to AtomicBool
 }
 
 #[tokio::main]
@@ -96,6 +98,7 @@ async fn main() {
         snap_tx: snap_tx.clone(),
         timer_tx: timer_tx.clone(),
         teams: Teams::new(),
+        is_paused: AtomicBool::new(true), // Changed from AtomicCell to AtomicBool
     });
 
     // Spawn the global 10 second timer.

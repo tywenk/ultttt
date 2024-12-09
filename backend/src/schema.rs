@@ -380,6 +380,8 @@ pub struct SnapshotResponse {
     pub your_team: Option<Team>,
     pub snap: [[usize; 9]; 9],
     pub current_team: Team,
+    pub x_team_size: usize,
+    pub o_team_size: usize,
 }
 
 use crossbeam::atomic::AtomicCell;

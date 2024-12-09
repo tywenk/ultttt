@@ -52,6 +52,8 @@ export type SnapshotResponse = {
   your_team: Team | null;
   snap: number[][];
   current_team: Team;
+  x_team_size: number;
+  o_team_size: number;
 };
 
 export function isSnapshotResponse(data: any): data is SnapshotResponse {
