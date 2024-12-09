@@ -27,7 +27,7 @@ export type Section = {
 export type Board = {
   data: Section[];
   status: Status;
-  current_player: Team;
+  current_team: Team;
 };
 
 export type Match = {
@@ -52,8 +52,6 @@ export type SnapshotResponse = {
   your_team: Team | null;
   snap: number[][];
   current_team: Team;
-  x_team_size: number;
-  o_team_size: number;
 };
 
 export function isSnapshotResponse(data: any): data is SnapshotResponse {
@@ -63,5 +61,19 @@ export function isSnapshotResponse(data: any): data is SnapshotResponse {
     "your_team" in data &&
     "snap" in data &&
     "current_team" in data
+  );
+}
+
+export type TeamsResponse = {
+  x_team_size: number;
+  o_team_size: number;
+};
+
+export function isTeamsResponse(data: any): data is TeamsResponse {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "x_team_size" in data &&
+    "o_team_size" in data
   );
 }

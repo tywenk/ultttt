@@ -16,7 +16,7 @@ use handler::{
     get_match_by_id_handler, get_matches_handler, get_snapshot_handler, handle_websocket,
     run_match_updates, update_snapshot_handler,
 };
-use schema::{MatchSchema, Snapshot, SnapshotResponse, Teams};
+use schema::{MatchSchema, Snapshot, SnapshotResponse, Teams, TeamsResponse};
 use sqlx::postgres;
 use tokio::{net::TcpListener, sync::broadcast};
 use tower_http::{
@@ -34,6 +34,7 @@ pub struct AppState {
     snapshot: Snapshot,
     match_schema: AtomicCell<MatchSchema>,
     snap_tx: broadcast::Sender<SnapshotResponse>,
+    teams_tx: broadcast::Sender<TeamsResponse>,
     timer_tx: broadcast::Sender<MatchSchema>,
     teams: Teams,
     is_paused: AtomicBool, // Changed from AtomicCell to AtomicBool
@@ -72,6 +73,7 @@ async fn main() {
     sqlx::migrate!("./migrations").run(&pool).await.unwrap();
 
     let (snap_tx, _snap_rx) = broadcast::channel(100);
+    let (teams_tx, _teams_rx) = broadcast::channel(100);
     let (timer_tx, _timer_rx) = broadcast::channel(4096);
 
     // Get the latest match state or create a new one
@@ -96,6 +98,7 @@ async fn main() {
         snapshot: Snapshot::new(),
         match_schema: AtomicCell::new(match_schema),
         snap_tx: snap_tx.clone(),
+        teams_tx: teams_tx.clone(),
         timer_tx: timer_tx.clone(),
         teams: Teams::new(),
         is_paused: AtomicBool::new(true), // Changed from AtomicCell to AtomicBool

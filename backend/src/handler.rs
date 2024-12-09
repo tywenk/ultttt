@@ -30,6 +30,7 @@ use crate::schema::Coords;
 use crate::schema::IncrementRequest;
 use crate::schema::MatchSchema;
 use crate::schema::SnapshotResponse;
+use crate::schema::TeamsResponse;
 use crate::{schema::Pagination, AppState};
 
 pub async fn get_matches_handler(
@@ -132,6 +133,10 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
     // This allows the connection to receive match updates
     let mut timer_rx = state.timer_tx.subscribe();
 
+    // Subscribe to team broadcast channel
+    // This allows the connection to receive team size updates
+    let mut teams_rx = state.teams_tx.subscribe();
+
     let (team_x_len, team_o_len) = state.teams.team_lens();
     tracing::info!(
         "New connection (Team {:?}). Total connections: {}",
@@ -153,13 +158,17 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
         snap: initial_snap,
         current_team: state.teams.current_team.load(),
         your_team: Some(team_connection.team),
-        x_team_size: team_x_len,
-        o_team_size: team_o_len,
     }) {
         if sender.send(Message::Text(initial_response)).await.is_err() {
             tracing::error!("Unable to send initial snapshot to client");
         }
     }
+
+    // Also blast clients with new team sizes
+    let _ = state.teams_tx.send(TeamsResponse {
+        x_team_size: team_x_len,
+        o_team_size: team_o_len,
+    });
 
     // Spawn a task to handle broadcast snapshot and match messages
     // Handles sending messages from this server to the client
@@ -184,6 +193,18 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
                     timer = timer_rx.recv() => {
                         if let Ok(timer) = timer {
                             if let Ok(msg) = serde_json::to_string(&timer) {
+                                if sender.send(Message::Text(msg)).await.is_err() {
+                                    break;
+                                }
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    // Handle sending team size updates
+                    teams = teams_rx.recv() => {
+                        if let Ok(teams) = teams {
+                            if let Ok(msg) = serde_json::to_string(&teams) {
                                 if sender.send(Message::Text(msg)).await.is_err() {
                                     break;
                                 }
@@ -225,14 +246,11 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
                             if needs_broadcast
                                 && last_broadcast.elapsed() > Duration::from_millis(100)
                             {
-                                let (team_x_len, team_o_len) = state.teams.team_lens();
                                 let new_snap = state.snapshot.load();
                                 let _ = state.snap_tx.send(SnapshotResponse {
                                     snap: new_snap,
                                     current_team: state.teams.current_team.load(),
                                     your_team: None,
-                                    x_team_size: team_x_len,
-                                    o_team_size: team_o_len,
                                 });
                                 needs_broadcast = false;
                                 last_broadcast = Instant::now();
@@ -243,15 +261,12 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
             }
 
             // Don't forget final broadcast if needed
-            let (team_x_len, team_o_len) = state.teams.team_lens();
             if needs_broadcast {
                 let new_snap = state.snapshot.load();
                 let _ = state.snap_tx.send(SnapshotResponse {
                     snap: new_snap,
                     current_team: state.teams.current_team.load(),
                     your_team: None,
-                    x_team_size: team_x_len,
-                    o_team_size: team_o_len,
                 });
             }
         })
@@ -270,6 +285,12 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
     // Update pause state based on team sizes
     let enough_players = team_x_len > 0 && team_o_len > 0;
     state.is_paused.store(!enough_players, Ordering::SeqCst);
+
+    // Send out updated team sizes
+    let _ = state.teams_tx.send(TeamsResponse {
+        x_team_size: team_x_len,
+        o_team_size: team_o_len,
+    });
 
     // Log connection close and decrement connection count
     tracing::info!(
