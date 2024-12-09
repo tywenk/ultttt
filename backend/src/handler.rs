@@ -166,7 +166,6 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
     let initial_snap = state.snapshot.load();
     if let Ok(initial_response) = serde_json::to_string(&SnapshotResponse {
         snap: initial_snap,
-        current_team: state.match_schema.load().board.current_team,
         your_team: Some(team_connection.team),
     }) {
         if sender.send(Message::Text(initial_response)).await.is_err() {
@@ -270,7 +269,6 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
                                     let new_snap = state.snapshot.load();
                                     let _ = state.snap_tx.send(SnapshotResponse {
                                         snap: new_snap,
-                                        current_team: state.match_schema.load().board.current_team,
                                         your_team: None,
                                     });
                                     needs_broadcast = false;
@@ -290,7 +288,6 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
                 let new_snap = state.snapshot.load();
                 let _ = state.snap_tx.send(SnapshotResponse {
                     snap: new_snap,
-                    current_team: state.match_schema.load().board.current_team,
                     your_team: None,
                 });
             }
@@ -354,7 +351,6 @@ async fn send_match_updates(state: Arc<AppState>) -> Result<()> {
             .snap_tx
             .send(SnapshotResponse {
                 snap: state.snapshot.load(),
-                current_team: state.match_schema.load().board.current_team,
                 your_team: None,
             })
             .map_err(|_| anyhow::anyhow!("Failed to send snapshot response"))?;
@@ -368,7 +364,7 @@ pub async fn run_match_updates(state: Arc<AppState>) {
     loop {
         // Check conditions first
         let (team_x_len, team_o_len) = state.teams.team_lens();
-        tracing::info!("Team sizes: X: {}, O: {}", team_x_len, team_o_len);
+        tracing::debug!("Team sizes: X: {}, O: {}", team_x_len, team_o_len);
         if team_x_len == 0 || team_o_len == 0 {
             state.is_paused.store(true, Ordering::SeqCst);
             tracing::warn!("Not enough players, game paused");

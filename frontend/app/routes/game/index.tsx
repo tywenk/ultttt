@@ -39,12 +39,10 @@ export default function Index({ loaderData }: Route.ComponentProps) {
   const [match, setMatch] = useState<Match | null>(initialMatch);
   const [snapshot, setSnapshot] = useState<number[][] | null>(null);
   const [teamSizes, setTeamSize] = useState<number[] | null>(null);
-  console.log({ snapshot, match });
 
   const messageHandler = useCallback((rawData: string) => {
     try {
       const data = JSON.parse(rawData);
-      console.log("WEBSOCKET: ", data);
       if (isSnapshotResponse(data)) {
         setSnapshot(data.snap);
         // Only set team if it is not null
@@ -75,7 +73,7 @@ export default function Index({ loaderData }: Route.ComponentProps) {
       snapshot,
       your_team: myTeam,
     } as MatchContextT;
-  }, [match, myTeam]);
+  }, [match, myTeam, snapshot]);
 
   return (
     <MatchProvider value={value}>

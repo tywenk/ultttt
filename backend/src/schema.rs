@@ -409,7 +409,6 @@ pub struct SnapshotResponse {
     // the client what team they are on
     pub your_team: Option<Team>,
     pub snap: [[usize; 9]; 9],
-    pub current_team: Team,
 }
 
 #[derive(Clone, Serialize)]

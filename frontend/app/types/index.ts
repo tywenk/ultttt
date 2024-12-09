@@ -51,7 +51,6 @@ export function isMatch(data: any): data is Match {
 export type SnapshotResponse = {
   your_team: Team | null;
   snap: number[][];
-  current_team: Team;
 };
 
 export function isSnapshotResponse(data: any): data is SnapshotResponse {
@@ -59,8 +58,7 @@ export function isSnapshotResponse(data: any): data is SnapshotResponse {
     typeof data === "object" &&
     data !== null &&
     "your_team" in data &&
-    "snap" in data &&
-    "current_team" in data
+    "snap" in data
   );
 }
 

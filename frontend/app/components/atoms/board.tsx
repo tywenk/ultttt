@@ -11,7 +11,7 @@ export function Board({ board }: { board: Board }) {
     <div>
       <div
         className={cn(
-          "grid grid-cols-3 grid-rows-3 gap-4 p-4 rounded",
+          "grid grid-cols-3 grid-rows-3 gap-2 p-2 rounded lg:gap-4 lg:p-4",
           status === Status.O
             ? "bg-blue-100"
             : status === Status.X
