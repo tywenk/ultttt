@@ -4,16 +4,19 @@ import { Status, type Section } from "@/types";
 
 export function Section({
   section,
+  disabled: disabledProp,
   index,
 }: {
   section: Section;
+  disabled: boolean;
   index: number;
 }) {
   const { data, is_interactive, status } = section;
+  const disabled = !is_interactive || status !== Status.Pending || disabledProp;
   return (
     <div
       className={cn(
-        "grid grid-cols-3 grid-rows-3 gap-2 p-2 rounded",
+        "grid grid-cols-3 grid-rows-3 gap-2 p-2 rounded outline outline-1 outline-stone-200",
         is_interactive
           ? "bg-yellow-200"
           : status === Status.O
@@ -28,7 +31,12 @@ export function Section({
       )}
     >
       {data.map((c, i) => (
-        <Cell cell={c} location={[index, i]} key={`cell-${i}`} />
+        <Cell
+          cell={c}
+          disabled={disabled}
+          location={[index, i]}
+          key={`cell-${i}`}
+        />
       ))}
     </div>
   );

@@ -1,9 +1,22 @@
 import { Button } from "@/components/ui/button";
 import { wsService } from "@/lib/ws";
+import { MatchContext } from "@/routes/game";
 import { Status, type Cell } from "@/types";
+import { useContext } from "react";
 
-export function Cell({ cell, location }: { cell: Cell; location: number[] }) {
+export function Cell({
+  cell,
+  disabled: disabledProp,
+  location,
+}: {
+  cell: Cell;
+  disabled: boolean;
+  location: number[];
+}) {
+  const context = useContext(MatchContext);
   const { status } = cell;
+
+  const disabled = cell.status !== Status.Pending || disabledProp;
 
   const handleClick = () => {
     if (location.length != 2) return;
@@ -18,8 +31,10 @@ export function Cell({ cell, location }: { cell: Cell; location: number[] }) {
   return (
     <Button
       variant="outline"
+      size="icon"
       onClick={handleClick}
-      className="aspect-square min-w-[40px] min-h-[40px] w-full font-mono"
+      className=""
+      disabled={disabled}
     >
       {status === Status.O ? "O" : status === Status.X ? "X" : " "}
     </Button>

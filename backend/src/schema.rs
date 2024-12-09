@@ -1,15 +1,18 @@
 use std::{
     array,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
-use anyhow::{bail, Error, Result};
+use anyhow::{bail, ensure, Error, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::Type;
 use uuid::Uuid;
 
-use crate::model::MatchModel;
+use crate::{model::MatchModel, AppState};
 
 const WINNING_SETS: [[usize; 3]; 8] = [
     [0, 1, 2],
@@ -97,6 +100,35 @@ impl Snapshot {
         self.load()
             .iter()
             .all(|row| row.iter().all(|&cell| cell == 0))
+    }
+
+    pub fn validate_move(
+        &self,
+        state: Arc<AppState>,
+        section: usize,
+        cell: usize,
+        team: Team,
+    ) -> Result<()> {
+        let curr_team = state.teams.current_team.load();
+        let curr_match = state.match_schema.load();
+
+        ensure!(section < 9 && cell < 9, "Invalid row or column index");
+        ensure!(
+            curr_match.board.current_team == team,
+            "Invalid team according to match state"
+        );
+        ensure!(curr_team == team, "Invalid team according to app state");
+
+        let board_is_interactive = curr_match.board.is_interactive();
+        ensure!(board_is_interactive, "Board is not interactive");
+
+        let section_is_interactive = curr_match.board.data[section].is_interactive();
+        ensure!(section_is_interactive, "Section is not interactive");
+
+        let cell_is_interactive = curr_match.board.data[section].data[cell].is_interactive();
+        ensure!(cell_is_interactive, "Cell is not interactive");
+
+        Ok(())
     }
 }
 
@@ -373,7 +405,7 @@ pub struct IncrementRequest {
     pub cell: usize,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Debug)]
 pub struct SnapshotResponse {
     // Team is not none only on new connection. This tells
     // the client what team they are on

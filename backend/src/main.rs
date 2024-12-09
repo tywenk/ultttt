@@ -6,7 +6,7 @@ mod schema;
 
 use axum::{
     http::{header::CONTENT_TYPE, Method},
-    routing::{any, get},
+    routing::{any, get, post},
     Router,
 };
 use crossbeam::atomic::AtomicCell;
@@ -14,7 +14,7 @@ use crud::{crud_create_match, crud_get_latest_match};
 use handler::{
     commit_match_from_snapshot_handler, create_match_handler, get_latest_match_handler,
     get_match_by_id_handler, get_matches_handler, get_snapshot_handler, handle_websocket,
-    run_match_updates, update_snapshot_handler,
+    reset_match_board_handler, run_match_updates, update_snapshot_handler,
 };
 use schema::{MatchSchema, Snapshot, SnapshotResponse, Teams, TeamsResponse};
 use sqlx::postgres;
@@ -35,9 +35,9 @@ pub struct AppState {
     match_schema: AtomicCell<MatchSchema>,
     snap_tx: broadcast::Sender<SnapshotResponse>,
     teams_tx: broadcast::Sender<TeamsResponse>,
-    timer_tx: broadcast::Sender<MatchSchema>,
+    match_tx: broadcast::Sender<MatchSchema>,
     teams: Teams,
-    is_paused: AtomicBool, // Changed from AtomicCell to AtomicBool
+    is_paused: AtomicBool,
 }
 
 #[tokio::main]
@@ -74,7 +74,7 @@ async fn main() {
 
     let (snap_tx, _snap_rx) = broadcast::channel(100);
     let (teams_tx, _teams_rx) = broadcast::channel(100);
-    let (timer_tx, _timer_rx) = broadcast::channel(4096);
+    let (match_tx, _match_rx) = broadcast::channel(4096);
 
     // Get the latest match state or create a new one
     let match_schema = match crud_get_latest_match(&pool).await {
@@ -99,7 +99,7 @@ async fn main() {
         match_schema: AtomicCell::new(match_schema),
         snap_tx: snap_tx.clone(),
         teams_tx: teams_tx.clone(),
-        timer_tx: timer_tx.clone(),
+        match_tx: match_tx.clone(),
         teams: Teams::new(),
         is_paused: AtomicBool::new(true), // Changed from AtomicCell to AtomicBool
     });
@@ -121,6 +121,10 @@ async fn main() {
         .route(
             "/api/matches/:match_id",
             get(get_match_by_id_handler).post(commit_match_from_snapshot_handler),
+        )
+        .route(
+            "/api/matches/:match_id/reset",
+            post(reset_match_board_handler),
         )
         .route(
             "/api/snapshot",

@@ -2,7 +2,6 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc; // Add this import
 
 use anyhow::anyhow;
-use anyhow::bail;
 use anyhow::Result;
 use axum::extract::ws::Message;
 use axum::extract::ws::WebSocket;
@@ -26,6 +25,7 @@ use crate::crud::crud_get_match;
 use crate::crud::crud_get_matches;
 use crate::crud::crud_update_match;
 use crate::error::AppError;
+use crate::schema::Board;
 use crate::schema::Coords;
 use crate::schema::IncrementRequest;
 use crate::schema::MatchSchema;
@@ -100,6 +100,16 @@ pub async fn commit_match_from_snapshot_handler(
     Ok(Json(MatchSchema::try_from(&m)?))
 }
 
+pub async fn reset_match_board_handler(
+    Path(match_id): Path<Uuid>,
+    State(data): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, AppError> {
+    let board = Board::new();
+    let m = crud_update_match(&data.db, match_id, board.status, board).await?;
+    data.snapshot.reset();
+    Ok(Json(MatchSchema::try_from(&m)?))
+}
+
 pub async fn get_snapshot_handler(
     State(data): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -129,9 +139,9 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
     // This allows the connection to receive updates, which in this case are snapshots
     let mut snap_rx = state.snap_tx.subscribe();
 
-    // Subscribe to timer broadcast channel
+    // Subscribe to match broadcast channel
     // This allows the connection to receive match updates
-    let mut timer_rx = state.timer_tx.subscribe();
+    let mut match_rx = state.match_tx.subscribe();
 
     // Subscribe to team broadcast channel
     // This allows the connection to receive team size updates
@@ -190,9 +200,9 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
                         }
                     },
                     // Handle sending new match struct end of each turn
-                    timer = timer_rx.recv() => {
-                        if let Ok(timer) = timer {
-                            if let Ok(msg) = serde_json::to_string(&timer) {
+                    match_schema = match_rx.recv() => {
+                        if let Ok(match_schema) = match_schema {
+                            if let Ok(msg) = serde_json::to_string(&match_schema) {
                                 if sender.send(Message::Text(msg)).await.is_err() {
                                     break;
                                 }
@@ -230,13 +240,14 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
                 if let Message::Text(text) = message {
                     // If the message is a valid increment request then we increment and broadcast updates to clients
                     // We also check that the current connection is on the team that is allowed to make the move
-                    let current_team = state.teams.current_team.load();
 
                     if let Ok(request) = serde_json::from_str::<IncrementRequest>(&text) {
-                        if request.section < 9
-                            && request.cell < 9
-                            && current_team == team_connection.team
-                        {
+                        if let Ok(_) = state.snapshot.validate_move(
+                            state.clone(),
+                            request.section,
+                            request.cell,
+                            team_connection.team,
+                        ) {
                             state.snapshot.increment(request.section, request.cell);
                             needs_broadcast = true;
 
@@ -303,20 +314,36 @@ async fn send_match_updates(state: Arc<AppState>) -> Result<()> {
     // Get current match data
     let match_schema = state.match_schema.load();
 
+    tracing::info!(
+        "Sending match updates. Snapshot: {:?}",
+        state.snapshot.load()
+    );
+
+    // Only update match if snapshot is not empty
     if let Some(coords) = state.snapshot.find_max_indices() {
         let board = match_schema.board.get_updated(coords)?;
         let updated_match =
             crud_update_match(&state.db, match_schema.id, board.status, board).await?;
         let updated_match_schema = MatchSchema::try_from(&updated_match)?;
 
-        // Send to all connected clients
-        if state.timer_tx.send(updated_match_schema).is_ok() {
-            // Reset snapshot state
-            state.teams.set(updated_match_schema.board.current_team);
-            state.snapshot.reset();
-        } else {
-            bail!("Unable to send match updates to clients");
-        }
+        // Send to all connected clients and update state
+        state
+            .match_tx
+            .send(updated_match_schema)
+            .map_err(|_| anyhow::anyhow!("Failed to send match updates to clients"))?;
+
+        // Reset snapshot state
+        state.teams.set(updated_match_schema.board.current_team);
+        state.snapshot.reset();
+
+        state
+            .snap_tx
+            .send(SnapshotResponse {
+                snap: state.snapshot.load(),
+                current_team: state.teams.current_team.load(),
+                your_team: None,
+            })
+            .map_err(|_| anyhow::anyhow!("Failed to send snapshot response"))?;
     }
 
     Ok(())
@@ -348,9 +375,8 @@ pub async fn run_match_updates(state: Arc<AppState>) {
             continue;
         }
 
-        tracing::info!("Conditions met, starting match updates");
-
         // Only sleep the full interval when actually running updates
+        tracing::info!("Conditions met, starting match updates");
         if let Err(e) = send_match_updates(state.clone()).await {
             tracing::error!("Error sending match updates: {:?}", e);
         }

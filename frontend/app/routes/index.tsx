@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { NavLink, Outlet } from "react-router";
+import { NavLink } from "react-router";
 import type { Route } from "./+types/index";
 
 export function meta({}: Route.MetaArgs) {
@@ -14,11 +14,13 @@ export function meta({}: Route.MetaArgs) {
 
 export default function Index() {
   return (
-    <div className="w-full h-full">
+    <div className="w-full mx-auto h-full min-h-screen max-w-prose grid place-content-center text-center gap-2">
+      <h1 className="font-medium text-xl">
+        Welcome to Ultimate Tic Tac Toe MMO
+      </h1>
       <NavLink to="/game">
         <Button>Enter</Button>
       </NavLink>
-      <Outlet />
     </div>
   );
 }
