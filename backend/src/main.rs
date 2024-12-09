@@ -107,7 +107,9 @@ async fn main() {
     // Spawn the global 10 second timer.
     let update_state = state.clone();
     tokio::spawn(async move {
-        run_match_updates(update_state).await;
+        if let Err(e) = run_match_updates(update_state).await {
+            tracing::error!("Failed to run match updates: {}", e);
+        }
     });
 
     // Build our application with some routes

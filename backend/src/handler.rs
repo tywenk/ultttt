@@ -30,6 +30,7 @@ use crate::schema::Coords;
 use crate::schema::IncrementRequest;
 use crate::schema::MatchSchema;
 use crate::schema::SnapshotResponse;
+use crate::schema::Status;
 use crate::schema::TeamsResponse;
 use crate::{schema::Pagination, AppState};
 
@@ -321,7 +322,7 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
     );
 }
 
-async fn send_match_updates(state: Arc<AppState>) -> Result<()> {
+async fn send_match_updates(state: Arc<AppState>) -> Result<Status> {
     // Get current match data
     let match_schema = state.match_schema.load();
 
@@ -354,11 +355,26 @@ async fn send_match_updates(state: Arc<AppState>) -> Result<()> {
                 your_team: None,
             })
             .map_err(|_| anyhow::anyhow!("Failed to send snapshot response"))?;
+
+        return Ok(updated_match_schema.board.status);
     }
+
+    Ok(Status::Pending)
+}
+
+async fn create_and_send_new_match(state: Arc<AppState>) -> Result<()> {
+    let new_match = crud_create_match(&state.db).await?;
+    let new_match_schema = MatchSchema::try_from(&new_match)?;
+    state.match_schema.store(new_match_schema);
+    state
+        .match_tx
+        .send(new_match_schema)
+        .map_err(|_| anyhow::anyhow!("Failed to send match updates to clients"))?;
 
     Ok(())
 }
-pub async fn run_match_updates(state: Arc<AppState>) {
+
+pub async fn run_match_updates(state: Arc<AppState>) -> Result<()> {
     tracing::info!("Starting run match updates");
 
     loop {
@@ -381,15 +397,26 @@ pub async fn run_match_updates(state: Arc<AppState>) {
 
         if state.snapshot.is_empty() {
             tracing::warn!("Snapshot is empty, not starting match updates");
-            tokio::time::sleep(Duration::from_secs(2)).await;
+            tokio::time::sleep(Duration::from_secs(4)).await;
             continue;
         }
 
         // Only sleep the full interval when actually running updates
-        tracing::info!("Conditions met, starting match updates");
-        if let Err(e) = send_match_updates(state.clone()).await {
-            tracing::error!("Error sending match updates: {:?}", e);
+        tracing::debug!("Conditions met, starting match updates");
+        match send_match_updates(state.clone()).await {
+            Ok(status) => {
+                if status.is_complete() {
+                    tracing::info!("Match is complete, pausing game for 20 seconds");
+                    state.is_paused.store(true, Ordering::SeqCst);
+                    tokio::time::sleep(Duration::from_secs(20)).await;
+                    create_and_send_new_match(state.clone()).await?;
+                    state.is_paused.store(false, Ordering::SeqCst);
+                }
+            }
+            Err(e) => {
+                tracing::error!("Error sending match updates: {:?}", e);
+            }
         }
-        tokio::time::sleep(Duration::from_secs(10)).await;
+        tokio::time::sleep(Duration::from_secs(12)).await;
     }
 }

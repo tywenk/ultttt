@@ -307,6 +307,15 @@ pub enum Status {
     Pending,
 }
 
+impl Status {
+    pub fn is_complete(&self) -> bool {
+        match self {
+            Status::X | Status::O | Status::Tied => true,
+            _ => false,
+        }
+    }
+}
+
 impl TryFrom<String> for Status {
     type Error = Error;
     fn try_from(s: String) -> Result<Self> {
