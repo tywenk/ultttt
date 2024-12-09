@@ -10,6 +10,7 @@ import {
   Match,
   Team,
 } from "@/types";
+import { Circle, Users, X } from "lucide-react";
 import {
   createContext,
   useCallback,
@@ -78,25 +79,45 @@ export default function Index({ loaderData }: Route.ComponentProps) {
   return (
     <MatchProvider value={value}>
       <div className="w-full mx-auto h-full min-h-screen max-w-prose flex flex-col gap-2 items-center pt-6">
-        <div className="w-full px-12 py-4 flex gap-2 flex-col">
+        <div className="w-full items-center px-12 py-4 flex gap-2 flex-col">
           <h1 className="font-medium text-xl">
             Welcome to Ultimate Tic Tac Toe MMO
           </h1>
-          <div className="flex flex-row gap-2">
+          <div className="flex flex-col md:flex-row gap-2">
             <Badge variant={myTeam == Team.O ? "teamO" : "teamX"}>
-              You are on team: {myTeam?.toLocaleUpperCase() ?? "No team"}
+              You are on team:{" "}
+              {myTeam === Team.O ? (
+                <Circle className="h-4 w-4 inline-block" />
+              ) : myTeam === Team.X ? (
+                <X className="h-4 w-4 inline-block" />
+              ) : (
+                "No team"
+              )}
             </Badge>
-            <Badge
-              variant={match?.board.current_team == Team.O ? "teamO" : "teamX"}
-            >
-              Current turn:{" "}
-              {match?.board.current_team?.toLocaleUpperCase() ?? "No team"}
-            </Badge>
-            <Badge variant="outline">X Players: {teamSizes?.[0]}</Badge>
-            <Badge variant="outline">O Players: {teamSizes?.[1]}</Badge>
           </div>
         </div>
         {match?.board != null && <Board board={match.board} />}
+        <div className="flex flex-col items-center md:justify-between md:gap-6 md:flex-row gap-2">
+          <div className="flex gap-2 items-center">
+            <Users className="h-4 w-4 inline-block" />
+            <Badge variant="outline" className="flex gap-1">
+              <X className="h-4 w-4 inline-block" />
+              {teamSizes?.[0].toLocaleString()}
+            </Badge>
+            <Badge variant="outline" className="flex gap-1">
+              <Circle className="h-4 w-4 inline-block" />
+              {teamSizes?.[1].toLocaleString()}
+            </Badge>
+          </div>
+
+          <Badge
+            className="w-fit"
+            variant={match?.board.current_team == Team.O ? "teamO" : "teamX"}
+          >
+            Current turn:{" "}
+            {match?.board.current_team?.toLocaleUpperCase() ?? "No team"}
+          </Badge>
+        </div>
       </div>
     </MatchProvider>
   );
