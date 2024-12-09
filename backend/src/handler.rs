@@ -253,7 +253,7 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
                             team_connection.team,
                         ) {
                             Ok(_) => {
-                                tracing::info!(
+                                tracing::debug!(
                                     "Incrementing cell: {:?} for team: {:?}",
                                     request,
                                     team_connection.team

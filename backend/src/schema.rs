@@ -112,12 +112,6 @@ impl Snapshot {
         let curr_match = state.match_schema.load();
 
         ensure!(section < 9 && cell < 9, "Invalid row or column index");
-
-        tracing::info!(
-            "Validating team: {:?}, Board teams: {:?}",
-            team,
-            curr_match.board.current_team
-        );
         ensure!(
             curr_match.board.current_team == team,
             "Invalid team according to match state"
