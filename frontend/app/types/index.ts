@@ -75,3 +75,7 @@ export function isTeamsResponse(data: any): data is TeamsResponse {
     "o_team_size" in data
   );
 }
+
+export type TimerResponse = {
+  turn_expires: string; // will be utc datetime
+};

@@ -80,9 +80,7 @@ export default function Index({ loaderData }: Route.ComponentProps) {
     <MatchProvider value={value}>
       <div className="w-full mx-auto h-full min-h-screen max-w-prose flex flex-col gap-2 items-center pt-6">
         <div className="w-full items-center px-12 py-4 flex gap-2 flex-col">
-          <h1 className="font-medium text-xl">
-            Welcome to Ultimate Tic Tac Toe MMO
-          </h1>
+          <h1 className="font-medium text-xl">Ultimate Tic Tac Toe MMO</h1>
           <div className="flex flex-col md:flex-row gap-2">
             <Badge variant={myTeam == Team.O ? "teamO" : "teamX"}>
               You are on team:{" "}
@@ -98,18 +96,6 @@ export default function Index({ loaderData }: Route.ComponentProps) {
         </div>
         {match?.board != null && <Board board={match.board} />}
         <div className="flex flex-col items-center md:justify-between md:gap-6 md:flex-row gap-2">
-          <div className="flex gap-2 items-center">
-            <Users className="h-4 w-4 inline-block" />
-            <Badge variant="outline" className="flex gap-1">
-              <X className="h-4 w-4 inline-block" />
-              {teamSizes?.[0].toLocaleString()}
-            </Badge>
-            <Badge variant="outline" className="flex gap-1">
-              <Circle className="h-4 w-4 inline-block" />
-              {teamSizes?.[1].toLocaleString()}
-            </Badge>
-          </div>
-
           <Badge
             className="w-fit"
             variant={match?.board.current_team == Team.O ? "teamO" : "teamX"}
@@ -117,6 +103,17 @@ export default function Index({ loaderData }: Route.ComponentProps) {
             Current turn:{" "}
             {match?.board.current_team?.toLocaleUpperCase() ?? "No team"}
           </Badge>
+          <div className="flex gap-2 items-center">
+            <Users className="h-4 w-4 inline-block" />
+            <Badge variant="outline">
+              <X className="mr-1 h-4 w-4 block" />
+              {teamSizes?.[0].toLocaleString()}
+            </Badge>
+            <Badge variant="outline">
+              <Circle className="mr-1 h-4 w-4 block" />
+              {teamSizes?.[1].toLocaleString()}
+            </Badge>
+          </div>
         </div>
       </div>
     </MatchProvider>
