@@ -28,7 +28,7 @@ use tracing::Level;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use std::sync::atomic::AtomicBool;
-use std::{sync::Arc, time::Duration}; // Add this import
+use std::{sync::Arc, time::Duration};
 
 pub struct AppState {
     db: postgres::PgPool,
@@ -144,8 +144,7 @@ async fn main() {
         .layer(trace_layer)
         .with_state(state);
 
-    // run it with hyper
-    let listener = TcpListener::bind("127.0.0.1:8000").await.unwrap();
+    let listener = TcpListener::bind("0.0.0.0:8000").await.unwrap();
     tracing::debug!("listening on {}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();
 }

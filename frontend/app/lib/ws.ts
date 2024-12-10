@@ -33,10 +33,10 @@ class WebSocketService {
       this.ws = null;
     }
 
-    this.ws = new WebSocket("ws://localhost:8000/ws");
+    this.ws = new WebSocket(`${import.meta.env.VITE_API_WS_BASE_URL}/ws`);
 
     this.ws.onopen = () => {
-      console.log("WebSocket Connected");
+      console.log("WebSocket connected");
       this.isConnecting = false;
       if (this.reconnectTimeout) {
         clearTimeout(this.reconnectTimeout);
