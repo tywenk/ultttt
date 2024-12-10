@@ -1,6 +1,8 @@
 import { Route } from ".react-router/types/app/routes/game/+types";
 import { Board } from "@/components/atoms/board";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { wsService } from "@/lib/ws";
 import {
   type Board as BoardT,
@@ -10,7 +12,7 @@ import {
   Match,
   Team,
 } from "@/types";
-import { Circle, Users, X } from "lucide-react";
+import { Circle, CircleHelp, Users, X } from "lucide-react";
 import {
   createContext,
   useCallback,
@@ -92,6 +94,38 @@ export default function Index({ loaderData }: Route.ComponentProps) {
                 "No team"
               )}
             </Badge>
+            <Dialog>
+              <DialogTrigger>
+                <Button size="sm" variant="outline">
+                  <CircleHelp />
+                  How to play
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <h2 className="font-medium text-lg">How to play</h2>
+                <p>
+                  The first team to win three small Tic Tac Toe games in a row
+                  wins the big game.
+                </p>
+                <p>
+                  This is a multiplayer game! Vote for the next move by
+                  selecting the cell you want your team to play in. You can
+                  select as many times as you want.
+                </p>
+                <p>
+                  You can only play in the small Tic Tac Toe game that is
+                  selected by the previous player. For example, If your opponent
+                  selects the bottom right corner of the small Tic Tac Toe game,
+                  you must play in the bottom right corner of the big Tic Tac
+                  Toe game.
+                </p>
+                <p>
+                  The selected game you are allowed to play in is highlighted in
+                  yellow.
+                </p>
+                <p>Good luck and have fun!</p>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
         {match?.board != null && <Board board={match.board} />}
