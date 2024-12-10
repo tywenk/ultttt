@@ -34,7 +34,9 @@ import {
 } from "react";
 
 export async function clientLoader({}: Route.ClientLoaderArgs) {
-  const res = await fetch(`http://localhost:8000/api/matches/latest`);
+  const res = await fetch(
+    `${import.meta.env.VITE_API_BASE_URL}/api/matches/latest`
+  );
   const match = (await res.json()) as Match;
   return { match };
 }
@@ -106,8 +108,6 @@ export default function Index({ loaderData }: Route.ComponentProps) {
       return () => clearInterval(interval);
     }
   }, [startTime, stopTime]);
-
-  console.log(timeRemaining);
 
   const value = useMemo(() => {
     return {
