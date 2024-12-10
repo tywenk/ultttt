@@ -51,7 +51,7 @@ export function Cell({
       disabled={disabled}
     >
       {count > 0 && (
-        <div className="rounded bg-red-500 text-xs absolute text-white -top-2 -right-2 min-w-[1.2rem] h-[1.2rem] flex items-center justify-center">
+        <div className="rounded bg-red-500 text-xs z-50 shadow-sm absolute text-white -top-2 -right-2 min-w-[1.2rem] h-[1.2rem] flex items-center justify-center">
           {count}
         </div>
       )}

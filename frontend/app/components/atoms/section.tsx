@@ -19,7 +19,7 @@ export function Section({
         "grid grid-cols-3 grid-rows-3 gap-2 p-2 rounded outline outline-1 outline-stone-300",
         disabled ? "pointer-events-none outline-stone-300/50" : "",
         is_interactive
-          ? "bg-yellow-200"
+          ? "bg-yellow-200 shadow-lg shadow-yellow-200"
           : status === Status.O
           ? "bg-blue-200"
           : status === Status.X

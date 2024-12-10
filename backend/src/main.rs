@@ -9,6 +9,7 @@ use axum::{
     routing::{any, get, post},
     Router,
 };
+use chrono::{DateTime, Utc};
 use crossbeam::atomic::AtomicCell;
 use crud::{crud_create_match, crud_get_latest_match};
 use handler::{
@@ -16,7 +17,7 @@ use handler::{
     get_match_by_id_handler, get_matches_handler, get_snapshot_handler, handle_websocket,
     reset_match_board_handler, run_match_updates, update_snapshot_handler,
 };
-use schema::{MatchSchema, Snapshot, SnapshotResponse, Teams, TeamsResponse};
+use schema::{MatchSchema, Snapshot, SnapshotResponse, Teams, TeamsResponse, TimerResponse};
 use sqlx::postgres;
 use tokio::{net::TcpListener, sync::broadcast};
 use tower_http::{
@@ -35,9 +36,12 @@ pub struct AppState {
     match_schema: AtomicCell<MatchSchema>,
     snap_tx: broadcast::Sender<SnapshotResponse>,
     teams_tx: broadcast::Sender<TeamsResponse>,
+    timer_tx: broadcast::Sender<TimerResponse>,
     match_tx: broadcast::Sender<MatchSchema>,
     teams: Teams,
     is_paused: AtomicBool,
+    start: AtomicCell<DateTime<Utc>>,
+    stop: AtomicCell<DateTime<Utc>>,
 }
 
 #[tokio::main]
@@ -75,6 +79,7 @@ async fn main() {
     let (snap_tx, _snap_rx) = broadcast::channel(100);
     let (teams_tx, _teams_rx) = broadcast::channel(100);
     let (match_tx, _match_rx) = broadcast::channel(4096);
+    let (timer_tx, _timer_rx) = broadcast::channel(100);
 
     // Get the latest match state or create a new one
     let match_schema = match crud_get_latest_match(&pool).await {
@@ -100,8 +105,11 @@ async fn main() {
         snap_tx: snap_tx.clone(),
         teams_tx: teams_tx.clone(),
         match_tx: match_tx.clone(),
+        timer_tx: timer_tx.clone(),
         teams: Teams::new(),
-        is_paused: AtomicBool::new(true), // Changed from AtomicCell to AtomicBool
+        is_paused: AtomicBool::new(false),
+        start: AtomicCell::new(Utc::now()),
+        stop: AtomicCell::new(Utc::now()),
     });
 
     // Spawn the global 10 second timer.

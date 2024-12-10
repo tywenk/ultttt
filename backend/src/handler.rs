@@ -13,6 +13,8 @@ use axum::{
     extract::{Query, State},
     response::IntoResponse,
 };
+use chrono::Duration as ChronoDuration;
+use chrono::Utc;
 use futures::SinkExt;
 use futures::StreamExt;
 use tokio::time::Duration;
@@ -32,6 +34,7 @@ use crate::schema::MatchSchema;
 use crate::schema::SnapshotResponse;
 use crate::schema::Status;
 use crate::schema::TeamsResponse;
+use crate::schema::TimerResponse;
 use crate::{schema::Pagination, AppState};
 
 pub async fn get_matches_handler(
@@ -108,7 +111,18 @@ pub async fn reset_match_board_handler(
     let board = Board::new();
     let m = crud_update_match(&data.db, match_id, board.status, board).await?;
     data.snapshot.reset();
-    Ok(Json(MatchSchema::try_from(&m)?))
+    let schema = MatchSchema::try_from(&m)?;
+    data.match_schema.store(schema);
+    data.snap_tx
+        .send(SnapshotResponse {
+            snap: data.snapshot.load(),
+            your_team: None,
+        })
+        .map_err(|_| anyhow!("Failed to send snapshot response"))?;
+    data.match_tx
+        .send(schema)
+        .map_err(|_| anyhow!("Failed to send match updates to clients"))?;
+    Ok(Json(schema))
 }
 
 pub async fn get_snapshot_handler(
@@ -148,6 +162,10 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
     // This allows the connection to receive team size updates
     let mut teams_rx = state.teams_tx.subscribe();
 
+    // Subscribe to timer broadcast channel
+    // This allows the connection to receive timer updates
+    let mut timer_rx = state.timer_tx.subscribe();
+
     let (team_x_len, team_o_len) = state.teams.team_lens();
     tracing::info!(
         "New connection (Team {:?}). Total connections: {}",
@@ -162,7 +180,7 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
     // Split the socket into sender and receiver
     let (mut sender, mut receiver) = socket.split();
 
-    // Broadcast the most recent snapshot to this client
+    // Send the most recent snapshot to this client
     // This lets them know what team they are on
     let initial_snap = state.snapshot.load();
     if let Ok(initial_response) = serde_json::to_string(&SnapshotResponse {
@@ -174,7 +192,21 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
         }
     }
 
-    // Also blast clients with new team sizes
+    // Send this client the most recent timer state
+    let start = state.start.load();
+    let stop = state.stop.load();
+    let is_paused = state.is_paused.load(Ordering::SeqCst);
+    if let Ok(initial_timer) = serde_json::to_string(&TimerResponse {
+        start,
+        stop,
+        is_paused,
+    }) {
+        if sender.send(Message::Text(initial_timer)).await.is_err() {
+            tracing::error!("Unable to send initial timer to client");
+        }
+    }
+
+    // Broadcast the current team sizes to all clients
     let _ = state.teams_tx.send(TeamsResponse {
         x_team_size: team_x_len,
         o_team_size: team_o_len,
@@ -223,6 +255,18 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
                             break;
                         }
                     }
+                    // handle the timer
+                    timer = timer_rx.recv() => {
+                        if let Ok(timer) = timer {
+                            if let Ok(msg) = serde_json::to_string(&timer) {
+                                if sender.send(Message::Text(msg)).await.is_err() {
+                                    break;
+                                }
+                            }
+                        } else {
+                            break;
+                        }
+                    }
                 }
             }
         })
@@ -238,11 +282,6 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
 
             while let Some(Ok(message)) = receiver.next().await {
                 if let Message::Text(text) = message {
-                    tracing::info!(
-                        "Incrementing for team: {:?} {:?}",
-                        team_connection.team,
-                        &text
-                    );
                     // If the message is a valid increment request then we increment and broadcast updates to clients
                     // We also check that the current connection is on the team that is allowed to make the move
                     if let Ok(request) = serde_json::from_str::<IncrementRequest>(&text) {
@@ -253,11 +292,6 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
                             team_connection.team,
                         ) {
                             Ok(_) => {
-                                tracing::debug!(
-                                    "Incrementing cell: {:?} for team: {:?}",
-                                    request,
-                                    team_connection.team
-                                );
                                 state.snapshot.increment(request.section, request.cell);
                                 needs_broadcast = true;
 
@@ -326,7 +360,7 @@ async fn send_match_updates(state: Arc<AppState>) -> Result<Status> {
     // Get current match data
     let match_schema = state.match_schema.load();
 
-    tracing::info!(
+    tracing::debug!(
         "Sending match updates. Snapshot: {:?}",
         state.snapshot.load()
     );
@@ -374,6 +408,22 @@ async fn create_and_send_new_match(state: Arc<AppState>) -> Result<()> {
     Ok(())
 }
 
+async fn send_timer_and_wait(state: Arc<AppState>, time: usize) -> Result<()> {
+    let start = Utc::now();
+    let stop = start + ChronoDuration::seconds(time as i64);
+    state.stop.store(stop);
+    state.start.store(start);
+    let _ = state.timer_tx.send(TimerResponse {
+        start,
+        stop,
+        is_paused: state.is_paused.load(Ordering::SeqCst),
+    });
+
+    tokio::time::sleep(Duration::from_secs(time as u64)).await;
+
+    Ok(())
+}
+
 pub async fn run_match_updates(state: Arc<AppState>) -> Result<()> {
     tracing::info!("Starting run match updates");
 
@@ -408,15 +458,17 @@ pub async fn run_match_updates(state: Arc<AppState>) -> Result<()> {
                 if status.is_complete() {
                     tracing::info!("Match is complete, pausing game for 20 seconds");
                     state.is_paused.store(true, Ordering::SeqCst);
-                    tokio::time::sleep(Duration::from_secs(20)).await;
+                    send_timer_and_wait(state.clone(), 30).await?;
                     create_and_send_new_match(state.clone()).await?;
                     state.is_paused.store(false, Ordering::SeqCst);
+                } else {
+                    send_timer_and_wait(state.clone(), 20).await?;
                 }
             }
             Err(e) => {
                 tracing::error!("Error sending match updates: {:?}", e);
+                send_timer_and_wait(state.clone(), 20).await?;
             }
         }
-        tokio::time::sleep(Duration::from_secs(12)).await;
     }
 }

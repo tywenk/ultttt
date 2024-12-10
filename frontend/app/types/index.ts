@@ -77,5 +77,17 @@ export function isTeamsResponse(data: any): data is TeamsResponse {
 }
 
 export type TimerResponse = {
-  turn_expires: string; // will be utc datetime
+  start: string; // will be utc datetime
+  stop: string; // will be utc datetime
+  is_paused: boolean;
 };
+
+export function isTimerResponse(data: any): data is TimerResponse {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "start" in data &&
+    "stop" in data &&
+    "is_paused" in data
+  );
+}

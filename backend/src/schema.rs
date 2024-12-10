@@ -426,6 +426,13 @@ pub struct TeamsResponse {
     pub o_team_size: usize,
 }
 
+#[derive(Clone, Serialize)]
+pub struct TimerResponse {
+    pub start: DateTime<Utc>,
+    pub stop: DateTime<Utc>,
+    pub is_paused: bool,
+}
+
 use dashmap::DashSet;
 
 #[derive(Debug)]
