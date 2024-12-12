@@ -23,4 +23,4 @@ COPY ./package.json pnpm-lock.yaml /app/
 COPY --from=production-dependencies-env /app/node_modules /app/node_modules
 COPY --from=build-env /app/build /app/build
 WORKDIR /app
-CMD ["pnpm", "start", "-l", "5173"]
+CMD ["pnpm", "start"]
