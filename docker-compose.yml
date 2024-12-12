@@ -50,14 +50,19 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
     environment:
       - DATABASE_URL=postgres://postgres:postgres@db:5432/postgres
       - RUST_LOG=${RUST_LOG:-info}
     depends_on:
       db:
         condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=Host(`api.ultimatetictactoemmo.com`)"
+      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.routers.backend.tls=true"
+      - "traefik.http.routers.backend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.backend.loadbalancer.server.port=8000"
     networks:
       - traefik-public
       - app-network
