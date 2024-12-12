@@ -1,6 +1,29 @@
 version: "3.8"
 
 services:
+  traefik:
+    image: traefik:v2.10
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=tywen.kelly@gmail.com"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "127.0.0.1:8080:8080" # Restrict Traefik dashboard to localhost only
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "letsencrypt:/letsencrypt"
+    networks:
+      - traefik-public
+
   frontend:
     build:
       context: ./frontend
@@ -14,7 +37,15 @@ services:
       - NODE_ENV=${NODE_ENV:-production}
     depends_on:
       - backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`ultimatetictactoemmo.com`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls=true"
+      - "traefik.http.routers.frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
     networks:
+      - traefik-public
       - app-network
 
   backend:
@@ -30,6 +61,7 @@ services:
       db:
         condition: service_healthy
     networks:
+      - traefik-public
       - app-network
 
   db:
@@ -53,7 +85,10 @@ services:
 
 volumes:
   postgres_data:
+  letsencrypt:
 
 networks:
   app-network:
     driver: bridge
+  traefik-public:
+    external: false
