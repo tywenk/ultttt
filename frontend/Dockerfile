@@ -13,4 +13,4 @@ COPY package.json pnpm-lock.yaml ./
 RUN npm i -g pnpm serve && pnpm i --prod --frozen-lockfile
 
 EXPOSE 3000
-CMD ["npx", "serve", "-s", "build/client", "-l", "3000"]
+CMD ["npx", "serve", "-s", "build/client", "-l", "tcp://0.0.0.0:3000"]
