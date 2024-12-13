@@ -1,10 +1,7 @@
 FROM node:20-alpine AS builder
-ARG VITE_API_BASE_URL
-ARG VITE_API_WS_BASE_URL
-ARG NODE_ENV
-ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
-ENV VITE_API_WS_BASE_URL=$VITE_API_WS_BASE_URL
-ENV NODE_ENV=$NODE_ENV
+
+ARG VITE_API_BASE_URL=https://api.ultimatetictactoemmo.com
+ARG VITE_API_WS_BASE_URL=wss://api.ultimatetictactoemmo.com
 
 RUN npm i -g pnpm
 WORKDIR /app
@@ -13,14 +10,7 @@ RUN pnpm i --frozen-lockfile
 COPY . .
 RUN pnpm build
 
-FROM node:20-alpine as production
-ARG VITE_API_BASE_URL
-ARG VITE_API_WS_BASE_URL
-ARG NODE_ENV
-ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
-ENV VITE_API_WS_BASE_URL=$VITE_API_WS_BASE_URL
-ENV NODE_ENV=$NODE_ENV
-
+FROM node:20-alpine AS production
 WORKDIR /app
 COPY --from=builder /app/build ./build
 COPY package.json pnpm-lock.yaml ./

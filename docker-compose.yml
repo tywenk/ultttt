@@ -37,10 +37,6 @@ services:
         - VITE_API_BASE_URL=https://api.ultimatetictactoemmo.com
         - VITE_API_WS_BASE_URL=wss://api.ultimatetictactoemmo.com
         - NODE_ENV=${NODE_ENV:-production}
-    environment:
-      - VITE_API_BASE_URL=https://api.ultimatetictactoemmo.com
-      - VITE_API_WS_BASE_URL=wss://api.ultimatetictactoemmo.com
-      - NODE_ENV=${NODE_ENV:-production}
     depends_on:
       - backend
     expose:
