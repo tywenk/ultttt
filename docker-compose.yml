@@ -54,7 +54,6 @@ services:
       - "traefik.http.services.frontend.loadbalancer.server.port=3000"
     networks:
       - traefik-public
-      - app-network
 
   backend:
     build:
