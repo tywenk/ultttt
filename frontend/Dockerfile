@@ -1,4 +1,11 @@
 FROM node:20-alpine AS builder
+ARG VITE_API_BASE_URL
+ARG VITE_API_WS_BASE_URL
+ARG NODE_ENV
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ENV VITE_API_WS_BASE_URL=$VITE_API_WS_BASE_URL
+ENV NODE_ENV=$NODE_ENV
+
 RUN npm i -g pnpm
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
@@ -7,10 +14,17 @@ COPY . .
 RUN pnpm build
 
 FROM node:20-alpine as production
+ARG VITE_API_BASE_URL
+ARG VITE_API_WS_BASE_URL
+ARG NODE_ENV
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ENV VITE_API_WS_BASE_URL=$VITE_API_WS_BASE_URL
+ENV NODE_ENV=$NODE_ENV
+
 WORKDIR /app
 COPY --from=builder /app/build ./build
 COPY package.json pnpm-lock.yaml ./
 RUN npm i -g pnpm serve && pnpm i --prod --frozen-lockfile
 
 EXPOSE 3000
-CMD ["npx", "serve", "-s", "build/client", "-l", "tcp://0.0.0.0:3000"]
+CMD ["serve", "-s", "build/client", "-l", "tcp://0.0.0.0:3000"]
