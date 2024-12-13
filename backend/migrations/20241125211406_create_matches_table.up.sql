@@ -1,4 +1,10 @@
-CREATE TYPE status AS ENUM ('x', 'o', 'tied', 'pending');
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'status') THEN
+        CREATE TYPE status AS ENUM ('x', 'o', 'tied', 'pending');
+    END IF;
+END
+$$;
 
 CREATE TABLE IF NOT EXISTS matches (
     state status NOT NULL DEFAULT 'pending',
