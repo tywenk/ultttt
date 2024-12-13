@@ -56,7 +56,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=postgres://postgres:postgres@db:5432/postgres
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/app
       - RUST_LOG=${RUST_LOG:-info}
     depends_on:
       db:
