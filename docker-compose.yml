@@ -43,6 +43,8 @@ services:
       - NODE_ENV=${NODE_ENV:-production}
     depends_on:
       - backend
+    expose:
+      - "3000"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.frontend.rule=Host(`ultimatetictactoemmo.com`)"

@@ -13,11 +13,8 @@ RUN apt-get update && \
 # Copy the project files
 COPY . .
 
-RUN echo $PWD
 # Install the package
 RUN cargo build --release
-
-RUN ls -la target/release
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y libpq5 openssl && rm -rf /var/lib/apt/lists/*
