@@ -331,9 +331,17 @@ async fn handle_socket_connection(socket: WebSocket, state: Arc<AppState>) {
 
     // Wait for either task to finish and then cleanup
     tokio::select! {
-        _ = &mut send_task => receive_task.abort(),
-        _ = &mut receive_task => send_task.abort(),
+        _ = &mut send_task => {
+            receive_task.abort();
+        },
+        _ = &mut receive_task => {
+            send_task.abort();
+        },
     };
+
+    // Ensure tasks are awaited to properly clean up resources
+    let _ = send_task.await;
+    let _ = receive_task.await;
 
     // Cleanup connection on disconnect
     state.teams.remove_connection(&team_connection);

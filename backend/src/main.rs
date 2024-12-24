@@ -17,7 +17,7 @@ use handler::{
     get_match_by_id_handler, get_matches_handler, get_snapshot_handler, handle_websocket,
     reset_match_board_handler, run_match_updates, update_snapshot_handler,
 };
-use schema::{MatchSchema, Snapshot, SnapshotResponse, Teams, TeamsResponse, TimerResponse};
+use schema::{Board, MatchSchema, Snapshot, SnapshotResponse, Teams, TeamsResponse, TimerResponse};
 use sqlx::postgres;
 use tokio::{net::TcpListener, sync::broadcast};
 use tower_http::{
@@ -26,6 +26,7 @@ use tower_http::{
 };
 use tracing::Level;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use uuid::Uuid;
 
 use std::sync::atomic::AtomicBool;
 use std::{sync::Arc, time::Duration};
@@ -42,6 +43,38 @@ pub struct AppState {
     is_paused: AtomicBool,
     start: AtomicCell<DateTime<Utc>>,
     stop: AtomicCell<DateTime<Utc>>,
+}
+
+impl Drop for AppState {
+    fn drop(&mut self) {
+        self.snap_tx
+            .send(SnapshotResponse {
+                snap: [[0; 9]; 9],
+                your_team: None,
+            })
+            .ok();
+        self.teams_tx
+            .send(TeamsResponse {
+                x_team_size: 0,
+                o_team_size: 0,
+            })
+            .ok();
+        self.timer_tx
+            .send(TimerResponse {
+                start: Utc::now(),
+                stop: Utc::now(),
+                is_paused: true,
+            })
+            .ok();
+        self.match_tx
+            .send(MatchSchema {
+                id: Uuid::new_v4(),
+                board: Board::new(),
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            })
+            .ok();
+    }
 }
 
 #[tokio::main]

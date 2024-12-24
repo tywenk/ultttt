@@ -130,6 +130,16 @@ impl Snapshot {
     }
 }
 
+impl Drop for Snapshot {
+    fn drop(&mut self) {
+        for row in self.snap.iter_mut() {
+            for cell in row.iter_mut() {
+                *cell = AtomicUsize::new(0);
+            }
+        }
+    }
+}
+
 pub trait ValidateInteractive {
     fn is_interactive(&self) -> bool;
 }
