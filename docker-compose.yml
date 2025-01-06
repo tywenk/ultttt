@@ -3,40 +3,45 @@ version: "3.8"
 services:
   traefik:
     image: traefik:v3.2
+    security_opt:
+      - no-new-privileges:true
     command:
-      # - "--log.level=DEBUG"
-      - "--api.insecure=true"
+      - "--api.insecure=false"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
       - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
       - "--entrypoints.websecure.address=:443"
-      # Try http challenge if tls challenge doesn't work
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
-      # - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.email=tywen.kelly@gmail.com"
       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
     ports:
       - "80:80"
       - "443:443"
-      - "127.0.0.1:8080:8080" # Restrict Traefik dashboard to localhost only
+      - "127.0.0.1:8080:8080"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
       - "letsencrypt:/letsencrypt"
     networks:
       - traefik-public
+    user: "1000:1000" # Run as non-root user
+    read_only: true
+    tmpfs:
+      - /tmp
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       target: ${NODE_ENV:-production}
-      args: # Add this section
+      args:
         - VITE_API_BASE_URL=https://api.ultimatetictactoemmo.com
         - VITE_API_WS_BASE_URL=wss://api.ultimatetictactoemmo.com
         - NODE_ENV=${NODE_ENV:-production}
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       - backend
     expose:
@@ -50,11 +55,17 @@ services:
       - "traefik.http.services.frontend.loadbalancer.server.port=3000"
     networks:
       - traefik-public
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    security_opt:
+      - no-new-privileges:true
     environment:
       - DATABASE_URL=postgres://postgres:postgres@db:5432/postgres
       - RUST_LOG=${RUST_LOG:-info}
@@ -71,16 +82,21 @@ services:
     networks:
       - traefik-public
       - app-network
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp
 
   db:
     image: postgres:16-alpine
+    security_opt:
+      - no-new-privileges:true
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=postgres
-
-    ports:
-      - "5432:5432"
+    expose:
+      - "5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -90,13 +106,25 @@ services:
       retries: 5
     networks:
       - app-network
+    user: "postgres:postgres"
 
 volumes:
   postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      device: /var/lib/docker/postgresql
+      o: bind
   letsencrypt:
+    driver: local
+    driver_opts:
+      type: none
+      device: /var/lib/docker/letsencrypt
+      o: bind
 
 networks:
   app-network:
     driver: bridge
+    internal: true
   traefik-public:
     external: false
