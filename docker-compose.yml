@@ -67,7 +67,7 @@ services:
     security_opt:
       - no-new-privileges:true
     environment:
-      - DATABASE_URL=postgres://postgres:postgres@db:5432/postgres
+      - DATABASE_URL=postgres://postgres:KN9BEd8YR7tcRDJ@db:5432/postgres
       - RUST_LOG=${RUST_LOG:-info}
     depends_on:
       db:
