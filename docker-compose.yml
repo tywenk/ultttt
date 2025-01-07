@@ -21,7 +21,7 @@ services:
       - "80:80"
       - "443:443"
       - "127.0.0.1:8080:8080"
-    user: "${UID:-1000}:${GID:-999}" # Use host user's UID and docker group GID
+    user: "${UID:-1000}:${GID:-987}" # Use host user's UID and docker group GID
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
       - "letsencrypt:/letsencrypt"
@@ -93,7 +93,7 @@ services:
       - no-new-privileges:true
     environment:
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_PASSWORD=KN9BEd8YR7tcRDJ
       - POSTGRES_DB=postgres
     expose:
       - "5432"
