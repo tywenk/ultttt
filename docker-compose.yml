@@ -27,7 +27,7 @@ services:
       - "letsencrypt:/letsencrypt"
     networks:
       - traefik-public
-    read_only: true
+    read_only: false
     tmpfs:
       - /tmp
 
