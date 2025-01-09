@@ -127,4 +127,3 @@ networks:
     driver: bridge
     internal: true
   traefik-public:
-    external: false
